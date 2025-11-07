@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Script.sol";
-import "../src/nGMUNY.sol";
+import "../src/NewToken.sol";
 import "../src/TokenMigration.sol";
 
 interface ICREATE3Factory {
@@ -22,8 +22,8 @@ contract DeployScript is Script {
     ICREATE3Factory constant CREATE3_FACTORY =
         ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
-    // Existing GMUNY token address (you'll need to set this)
-    address constant GMUNY_ADDRESS = address(0); // TODO: Replace with actual GMUNY address
+    // Existing OldToken token address
+    address constant OLD_TOKEN_ADDRESS = address(0); // TODO: Replace with actual OldToken address
 
     function run() external {
         // Get private key from environment
@@ -33,30 +33,30 @@ contract DeployScript is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Generate random salts for CREATE3
-        bytes32 nGMUNYSalt = keccak256(
-            abi.encodePacked("nGMUNY", block.timestamp, deployer)
+        bytes32 NewTokenSalt = keccak256(
+            abi.encodePacked("NewToken", block.timestamp, deployer)
         );
         bytes32 migrationSalt = keccak256(
             abi.encodePacked("TokenMigration", block.timestamp, deployer)
         );
 
         // Get predicted addresses
-        address predictedNGMUNY = CREATE3_FACTORY.getDeployed(
+        address predictedNewToken = CREATE3_FACTORY.getDeployed(
             deployer,
-            nGMUNYSalt
+            NewTokenSalt
         );
         address predictedMigration = CREATE3_FACTORY.getDeployed(
             deployer,
             migrationSalt
         );
 
-        console.log("Predicted nGMUNY address:", predictedNGMUNY);
+        console.log("Predicted NewToken address:", predictedNewToken);
         console.log("Predicted Migration address:", predictedMigration);
 
         // Deploy Migration contract first
         bytes memory migrationBytecode = abi.encodePacked(
             type(TokenMigration).creationCode,
-            abi.encode(GMUNY_ADDRESS, predictedNGMUNY)
+            abi.encode(OLD_TOKEN_ADDRESS, predictedNewToken)
         );
 
         address migrationAddress = CREATE3_FACTORY.deploy(
@@ -69,24 +69,27 @@ contract DeployScript is Script {
             "Migration address mismatch"
         );
 
-        // Deploy nGMUNY token with migration contract as initial mint recipient
-        bytes memory nGMUNYBytecode = abi.encodePacked(
-            type(nGMUNY).creationCode,
+        // Deploy NewToken token with migration contract as initial mint recipient
+        bytes memory NewTokenBytecode = abi.encodePacked(
+            type(NEWT).creationCode,
             abi.encode(migrationAddress)
         );
 
-        address nGMUNYAddress = CREATE3_FACTORY.deploy(
-            nGMUNYSalt,
-            nGMUNYBytecode
+        address NewTokenAddress = CREATE3_FACTORY.deploy(
+            NewTokenSalt,
+            NewTokenBytecode
         );
-        console.log("nGMUNY token deployed at:", nGMUNYAddress);
-        require(nGMUNYAddress == predictedNGMUNY, "nGMUNY address mismatch");
+        console.log("NewToken token deployed at:", NewTokenAddress);
+        require(
+            NewTokenAddress == predictedNewToken,
+            "NewToken address mismatch"
+        );
 
         // Verify deployment
-        nGMUNY token = nGMUNY(nGMUNYAddress);
-        console.log("nGMUNY total supply:", token.totalSupply());
+        NEWT token = NewToken(NewTokenAddress);
+        console.log("NewToken total supply:", token.totalSupply());
         console.log(
-            "Migration contract nGMUNY balance:",
+            "Migration contract NewToken balance:",
             token.balanceOf(migrationAddress)
         );
 
@@ -94,11 +97,11 @@ contract DeployScript is Script {
 
         // Log deployment info
         console.log("\n=== Deployment Complete ===");
-        console.log("nGMUNY Token:", nGMUNYAddress);
+        console.log("NewToken Token:", NewTokenAddress);
         console.log("Migration Contract:", migrationAddress);
-        console.log("GMUNY Token (existing):", GMUNY_ADDRESS);
+        console.log("OldToken Token (existing):", OldToken_ADDRESS);
         console.log("\nSalts used:");
-        console.log("nGMUNY Salt:", vm.toString(nGMUNYSalt));
+        console.log("NewToken Salt:", vm.toString(NewTokenSalt));
         console.log("Migration Salt:", vm.toString(migrationSalt));
     }
 }
@@ -107,21 +110,21 @@ contract DeployScript is Script {
 contract DeployWithCustomSalt is Script {
     ICREATE3Factory constant CREATE3_FACTORY =
         ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
-    address constant GMUNY_ADDRESS = address(0); // TODO: Replace with actual GMUNY address
+    address constant OLD_TOKEN_ADDRESS = address(0); // TODO: Replace with actual OldToken address
 
     function run(
-        string memory nGMUNYSaltString,
+        string memory NewTokenSaltString,
         string memory migrationSaltString
     ) external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 
         // Use provided salt strings or generate random ones
-        bytes32 nGMUNYSalt = bytes(nGMUNYSaltString).length > 0
-            ? keccak256(abi.encodePacked(nGMUNYSaltString))
+        bytes32 NewTokenSalt = bytes(NewTokenSaltString).length > 0
+            ? keccak256(abi.encodePacked(NewTokenSaltString))
             : keccak256(
                 abi.encodePacked(
-                    "nGMUNY",
+                    "NewToken",
                     block.timestamp,
                     block.prevrandao,
                     deployer
@@ -142,9 +145,9 @@ contract DeployWithCustomSalt is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Get predicted addresses
-        address predictedNGMUNY = CREATE3_FACTORY.getDeployed(
+        address predictedNewToken = CREATE3_FACTORY.getDeployed(
             deployer,
-            nGMUNYSalt
+            NewTokenSalt
         );
         address predictedMigration = CREATE3_FACTORY.getDeployed(
             deployer,
@@ -152,16 +155,16 @@ contract DeployWithCustomSalt is Script {
         );
 
         console.log("Deploying with salts:");
-        console.log("nGMUNY Salt:", vm.toString(nGMUNYSalt));
+        console.log("NewToken Salt:", vm.toString(NewTokenSalt));
         console.log("Migration Salt:", vm.toString(migrationSalt));
         console.log("\nPredicted addresses:");
-        console.log("nGMUNY:", predictedNGMUNY);
+        console.log("NewToken:", predictedNewToken);
         console.log("Migration:", predictedMigration);
 
         // Deploy contracts
         bytes memory migrationBytecode = abi.encodePacked(
             type(TokenMigration).creationCode,
-            abi.encode(GMUNY_ADDRESS, predictedNGMUNY)
+            abi.encode(OLD_TOKEN_ADDRESS, predictedNewToken)
         );
 
         address migrationAddress = CREATE3_FACTORY.deploy(
@@ -169,20 +172,20 @@ contract DeployWithCustomSalt is Script {
             migrationBytecode
         );
 
-        bytes memory nGMUNYBytecode = abi.encodePacked(
-            type(nGMUNY).creationCode,
+        bytes memory NewTokenBytecode = abi.encodePacked(
+            type(NewToken).creationCode,
             abi.encode(migrationAddress)
         );
 
-        address nGMUNYAddress = CREATE3_FACTORY.deploy(
-            nGMUNYSalt,
-            nGMUNYBytecode
+        address NewTokenAddress = CREATE3_FACTORY.deploy(
+            NewTokenSalt,
+            NewTokenBytecode
         );
 
         vm.stopBroadcast();
 
         console.log("\n=== Deployment Complete ===");
-        console.log("nGMUNY Token:", nGMUNYAddress);
+        console.log("NewToken Token:", NewTokenAddress);
         console.log("Migration Contract:", migrationAddress);
     }
 }

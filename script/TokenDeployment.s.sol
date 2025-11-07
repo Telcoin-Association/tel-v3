@@ -2,19 +2,19 @@
 pragma solidity ^0.8.26;
 
 import {Script, console} from "forge-std/Script.sol";
-import "../src/NGMUNY.sol";
+import "../src/NewToken.sol";
 
 /**
- * @dev deploy nGMUNY
+ * @dev deploy NewToken
  */
-contract DeployNewGMUNNY is Script {
-    nGMUNY public ngmuny;
+contract DeployNewToken is Script {
+    NewToken public newToken;
 
     function setUp() public {}
 
     function run() public {
-        // vm.startBroadcast();
-        // ngmuny = new nGMUNY(100 * 10 ** 18); // 100B
-        // vm.stopBroadcast();
+        vm.startBroadcast();
+        newToken = new NewToken(100 * 10 ** 18); // 100B
+        vm.stopBroadcast();
     }
 }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import "../src/nGMUNY.sol";
+import "../src/NewToken.sol";
 import "../src/TokenMigration.sol";
 import "../deployments/Create3Utils.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract TokenMigrationFuzzTest is Test {
     // contracts
     IERC20 public oldToken;
-    nGMUNY public newToken;
+    NewToken public newToken;
     TokenMigration public migration;
     Create3Impl public create3;
 
@@ -20,10 +20,11 @@ contract TokenMigrationFuzzTest is Test {
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
 
     // constants
-    address constant GMUNY_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
-    uint256 constant INITIAL_NGMUNY_SUPPLY = 99_000_000_000 * 10 ** 18; // 99B
+    address constant OLD_TOKEN_ADDRESS =
+        0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
+    uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 99_000_000_000 * 10 ** 18; // 99B
     // largest holder is Polygon bridge ~35B so set bound to 50B
-    uint256 constant MAX_OLDTOKEN_AMOUNT = 50_000_000_000 * 10 ** 2; // 50B with 2 decimals
+    uint256 constant MAX_OLD_TOKEN_AMOUNT = 50_000_000_000 * 10 ** 2; // 50B with 2 decimals
     uint256 constant MAX_UINT256 = type(uint256).max;
 
     // fork
@@ -36,7 +37,7 @@ contract TokenMigrationFuzzTest is Test {
         vm.selectFork(ethereum_fork);
 
         // existing token
-        oldToken = IERC20(GMUNY_ADDRESS);
+        oldToken = IERC20(OLD_TOKEN_ADDRESS);
 
         // deploy create3 util contract
         create3 = new Create3Impl();
@@ -51,11 +52,15 @@ contract TokenMigrationFuzzTest is Test {
         // deploy new token using create3
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(nGMUNY).creationCode,
-            abi.encode(INITIAL_NGMUNY_SUPPLY, owner, expectedMigrationAddress)
+            type(NewToken).creationCode,
+            abi.encode(
+                INITIAL_NEW_TOKEN_SUPPLY,
+                owner,
+                expectedMigrationAddress
+            )
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
-        newToken = nGMUNY(deployment);
+        newToken = NewToken(deployment);
 
         // deploy token migration contract
         bytes memory migrationArgs = abi.encodePacked(
@@ -73,7 +78,7 @@ contract TokenMigrationFuzzTest is Test {
      */
     function testFuzz_SingleUserMigration(uint256 amount) public {
         // Bound the amount to reasonable values (non-zero and within supply)
-        amount = bound(amount, 1, MAX_OLDTOKEN_AMOUNT);
+        amount = bound(amount, 1, MAX_OLD_TOKEN_AMOUNT);
 
         address user = address(uint160(uint256(keccak256("user"))));
 
@@ -148,7 +153,7 @@ contract TokenMigrationFuzzTest is Test {
             );
             balances[i] =
                 (uint256(keccak256(abi.encode(seed, i, "amount"))) %
-                    (MAX_OLDTOKEN_AMOUNT / numUsers)) +
+                    (MAX_OLD_TOKEN_AMOUNT / numUsers)) +
                 1;
 
             deal(address(oldToken), users[i], balances[i]);
@@ -224,8 +229,8 @@ contract TokenMigrationFuzzTest is Test {
         uint256 maxSafeOldTokens = MAX_UINT256 / migration.DECIMAL_MULTIPLIER();
 
         // Ensure we don't exceed actual supply
-        uint256 testAmount = maxSafeOldTokens > MAX_OLDTOKEN_AMOUNT
-            ? MAX_OLDTOKEN_AMOUNT
+        uint256 testAmount = maxSafeOldTokens > MAX_OLD_TOKEN_AMOUNT
+            ? MAX_OLD_TOKEN_AMOUNT
             : maxSafeOldTokens;
 
         address whale = address(uint160(uint256(keccak256("whale"))));
@@ -252,7 +257,7 @@ contract TokenMigrationFuzzTest is Test {
         amount = bound(
             amount,
             1,
-            INITIAL_NGMUNY_SUPPLY / migration.DECIMAL_MULTIPLIER()
+            INITIAL_NEW_TOKEN_SUPPLY / migration.DECIMAL_MULTIPLIER()
         );
 
         address user = address(uint160(uint256(keccak256("exact_user"))));
@@ -285,7 +290,7 @@ contract TokenMigrationFuzzTest is Test {
      * Edge case: Migration fails when contract is 1 wei short
      */
     function testFuzz_InsufficientByOneWei(uint256 amount) public {
-        amount = bound(amount, 2, MAX_OLDTOKEN_AMOUNT);
+        amount = bound(amount, 2, MAX_OLD_TOKEN_AMOUNT);
 
         address user = address(uint160(uint256(keccak256("onewei_user"))));
         uint256 requiredNewTokens = amount * migration.DECIMAL_MULTIPLIER();
@@ -482,7 +487,7 @@ contract TokenMigrationFuzzTest is Test {
             userAmounts[i] = bound(
                 userAmounts[i],
                 0,
-                MAX_OLDTOKEN_AMOUNT / userAmounts.length
+                MAX_OLD_TOKEN_AMOUNT / userAmounts.length
             );
 
             if (userAmounts[i] == 0) continue;
@@ -522,7 +527,7 @@ contract TokenMigrationFuzzTest is Test {
         uint256 totalNewDistributed = totalMigrated *
             migration.DECIMAL_MULTIPLIER();
         assertEq(
-            INITIAL_NGMUNY_SUPPLY - newToken.balanceOf(address(migration)),
+            INITIAL_NEW_TOKEN_SUPPLY - newToken.balanceOf(address(migration)),
             totalNewDistributed
         );
     }
@@ -531,7 +536,7 @@ contract TokenMigrationFuzzTest is Test {
      * Edge case: Attempting double migration
      */
     function testFuzz_DoubleMigrationPrevented(uint256 amount) public {
-        amount = bound(amount, 1, MAX_OLDTOKEN_AMOUNT);
+        amount = bound(amount, 1, MAX_OLD_TOKEN_AMOUNT);
 
         address user = address(uint160(uint256(keccak256("double_user"))));
         deal(address(oldToken), user, amount);

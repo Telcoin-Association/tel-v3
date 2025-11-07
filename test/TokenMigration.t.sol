@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
-import "../src/nGMUNY.sol";
+import "../src/NewToken.sol";
 import "../src/TokenMigration.sol";
 import "../deployments/Create3Utils.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -12,7 +12,7 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 contract TokenMigrationTest is Test {
     // contracts
     IERC20 public oldToken;
-    nGMUNY public newToken;
+    NewToken public newToken;
     TokenMigration public migration;
     Create3Impl public create3;
 
@@ -23,9 +23,10 @@ contract TokenMigrationTest is Test {
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
 
     // constants
-    address constant GMUNY_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F; // ethereum
-    uint256 constant GMUNY_SUPPLY = 100_000_000_000 * 10 ** 2; // 100B with 2 decimals
-    uint256 constant INITIAL_NGMUNY_SUPPLY = 10_000_000_000 * 10 ** 18; // 10B with 18 decimals
+    address constant OLDTOKEN_ADDRESS =
+        0x467Bccd9d29f223BcE8043b84E8C8B282827790F; // ethereum
+    uint256 constant OldToken_SUPPLY = 100_000_000_000 * 10 ** 2; // 100B with 2 decimals
+    uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 10_000_000_000 * 10 ** 18; // 10B with 18 decimals
     uint256 constant INITIAL_USER_BAL = 1_000_000 * 10 ** 2;
 
     // fork
@@ -38,13 +39,13 @@ contract TokenMigrationTest is Test {
         vm.selectFork(ethereum_fork);
 
         // existing token
-        oldToken = IERC20(GMUNY_ADDRESS);
+        oldToken = IERC20(OLDTOKEN_ADDRESS);
 
         // verify oldToken has 2 decimals
         assertEq(
             IERC20Metadata(address(oldToken)).decimals(),
             2,
-            "GMUNY should have 2 decimals"
+            "OldToken should have 2 decimals"
         );
 
         // deploy create3 util contract
@@ -62,11 +63,15 @@ contract TokenMigrationTest is Test {
         // deploy new token using create3 and mint to migration contract
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(nGMUNY).creationCode,
-            abi.encode(INITIAL_NGMUNY_SUPPLY, owner, expectedMigrationAddress)
+            type(NewToken).creationCode,
+            abi.encode(
+                INITIAL_NEW_TOKEN_SUPPLY,
+                owner,
+                expectedMigrationAddress
+            )
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
-        newToken = nGMUNY(deployment);
+        newToken = NewToken(deployment);
 
         // deploy token migration contract
         bytes memory migrationArgs = abi.encodePacked(
@@ -90,7 +95,10 @@ contract TokenMigrationTest is Test {
         // check initial balances
         assertEq(oldToken.balanceOf(user1), INITIAL_USER_BAL);
         assertEq(newToken.balanceOf(user1), 0);
-        assertEq(newToken.balanceOf(address(migration)), INITIAL_NGMUNY_SUPPLY);
+        assertEq(
+            newToken.balanceOf(address(migration)),
+            INITIAL_NEW_TOKEN_SUPPLY
+        );
 
         // take current burn balance since this forks live
         uint256 currentBurnBalance = oldToken.balanceOf(
@@ -191,7 +199,7 @@ contract TokenMigrationTest is Test {
 
         // recover old tokens
         vm.prank(owner);
-        migration.recoverERC20(user1, GMUNY_ADDRESS, INITIAL_USER_BAL);
+        migration.recoverERC20(user1, OLDTOKEN_ADDRESS, INITIAL_USER_BAL);
         assertEq(oldToken.balanceOf(user1), INITIAL_USER_BAL);
         assertEq(oldToken.balanceOf(migrationContract), 0);
     }
@@ -230,7 +238,7 @@ contract TokenMigrationTest is Test {
             )
         );
 
-        migration.recoverERC20(user1, GMUNY_ADDRESS, 10);
+        migration.recoverERC20(user1, OLDTOKEN_ADDRESS, 10);
 
         vm.stopPrank();
     }

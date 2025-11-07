@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  * @title ERC-20 Token
  * @dev ERC20 token with 18 decimals
  */
-contract nGMUNY is ERC20, Ownable {
+contract NewToken is ERC20, Ownable {
     uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10 ** 18; // 100B tokens with 18 decimals
 
     /**
@@ -21,7 +21,7 @@ contract nGMUNY is ERC20, Ownable {
         uint256 initial_supply,
         address _owner,
         address _minter
-    ) ERC20("New G-Money", "nGMUNY") Ownable(_owner) {
+    ) ERC20("NewToken", "NEWT") Ownable(_owner) {
         require(initial_supply < TOTAL_SUPPLY, "Invalid mint amount");
         _mint(_minter, initial_supply);
     }

@@ -1,11 +1,11 @@
-# GMUNY to nGMUNY Migration
+# OldToken to NewToken Migration
 
 ## Overview
-This project implements a migration system from GMUNY (2 decimals) to nGMUNY (18 decimals) tokens at a 1:1 exchange rate using CREATE3 for deterministic deployment.
+This project implements a migration system from OldToken (2 decimals) to NewToken (18 decimals) tokens at a 1:1 exchange rate using CREATE3 for deterministic deployment.
 
 ## Contract Features
 
-### nGMUNY Token
+### New Token
 - ERC-20 compliant token with 18 decimals
 - Total supply: 100 billion tokens
 - Initial mint to migration contract upon deployment
@@ -13,28 +13,28 @@ This project implements a migration system from GMUNY (2 decimals) to nGMUNY (18
 ### Migration Contract
 - **1:1 exchange rate** with automatic decimal conversion (2 → 18)
 - **Pausable** by owner for emergency situations
-- **GMUNY tokens locked permanently** in the contract after migration
+- **OldToken tokens locked permanently** in the contract after migration
 - **Owner functions:**
   - Pause/unpause migrations
-  - Withdraw remaining nGMUNY tokens
-  - Recover stuck GMUNY tokens (optional emergency function)
+  - Withdraw remaining NewToken tokens
+  - Recover stuck OldToken tokens (optional emergency function)
   - Recover other accidentally sent tokens
 
 ## Deployment Instructions
 
 ### Prerequisites
 1. Install Foundry: https://book.getfoundry.sh/getting-started/installation
-2. Set up your environment variables:
+2. Set up environment variables:
 ```bash
-export PRIVATE_KEY="your-private-key"
-export RPC_URL="your-ethereum-rpc-url"
-export ETHERSCAN_API_KEY="your-etherscan-api-key" # For verification
+export PRIVATE_KEY="private-key"
+export RPC_URL="ethereum-rpc-url"
+export ETHERSCAN_API_KEY="etherscan-api-key" # For verification
 ```
 
-### Step 1: Update GMUNY Address
-Edit the deployment script and replace the placeholder with your actual GMUNY token address:
+### Step 1: Update OldToken Address
+Edit the deployment script and replace the placeholder with OldToken token address:
 ```solidity
-address constant GMUNY_ADDRESS = 0x... // Your GMUNY token address
+address constant OLDTOKEN_ADDRESS = 0x... // old token address
 ```
 
 ### Step 2: Deploy Contracts
@@ -44,14 +44,14 @@ Run the deployment script:
 forge script script/DeployScript.s.sol:DeployScript --rpc-url $RPC_URL --broadcast --verify
 
 # Or deploy with custom salts for more control
-forge script script/DeployScript.s.sol:DeployWithCustomSalt --rpc-url $RPC_URL --broadcast --verify --sig "run(string,string)" "my-ngmuny-salt" "my-migration-salt"
+forge script script/DeployScript.s.sol:DeployWithCustomSalt --rpc-url $RPC_URL --broadcast --verify --sig "run(string,string)" "my-newToken-salt" "my-migration-salt"
 ```
 
 ### Step 3: Verify Deployment
 After deployment, verify:
-1. nGMUNY total supply is 100B tokens (10^29 base units)
-2. Migration contract holds all nGMUNY tokens
-3. Migration contract has correct GMUNY and nGMUNY addresses
+1. NewToken total supply is 100B tokens (10^29 base units)
+2. Migration contract holds all NewToken tokens
+3. Migration contract has correct OldToken and NewToken addresses
 
 ### Step 4: Test Migration (Optional)
 Test with a small amount first:
@@ -66,12 +66,12 @@ forge script script/DeployScript.s.sol:DeployScript --rpc-url $TESTNET_RPC_URL -
 ## Usage Guide
 
 ### For Users
-1. **Approve** the migration contract to spend your GMUNY tokens
-2. **Call migrate()** with the amount of GMUNY you want to exchange
-3. **Receive** nGMUNY tokens automatically (amount × 10^16)
+1. **Approve** the migration contract to spend OldToken tokens
+2. **Call migrate()** with the amount of OldToken want to exchange
+3. **Receive** NewToken tokens automatically (amount × 10^16)
 
 Example using Etherscan:
-1. Go to GMUNY token contract
+1. Go to OldToken token contract
 2. Call `approve(migrationAddress, amount)`
 3. Go to Migration contract
 4. Call `migrate(amount)`
@@ -84,28 +84,28 @@ migration.pause() // Stop all migrations
 migration.unpause() // Resume migrations
 ```
 
-#### Withdraw Remaining nGMUNY
+#### Withdraw Remaining NewToken
 After migration period ends:
 ```solidity
-migration.withdrawRemainingNGMUNY(treasuryAddress)
+migration.withdrawRemainingNewToken(treasuryAddress)
 ```
 
 #### Recover Stuck Tokens
 If needed:
 ```solidity
-migration.recoverStuckGMUNY(recoveryAddress) // For GMUNY
+migration.recoverStuckOldToken(recoveryAddress) // For OldToken
 migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
 ```
 
 ## Key Calculations
 
-- **GMUNY (2 decimals):** 100B = 10,000,000,000.00 = 10^13 base units
-- **nGMUNY (18 decimals):** 100B = 100,000,000,000.000000000000000000 = 10^29 base units
+- **OldToken (2 decimals):** 100B = 10,000,000,000.00 = 10^13 base units
+- **NewToken (18 decimals):** 100B = 100,000,000,000.000000000000000000 = 10^29 base units
 - **Conversion multiplier:** 10^16 (to convert from 2 to 18 decimals)
 
 ### Example Migration
-- User has: 1,000 GMUNY (2 decimals) = 100,000 base units
-- User receives: 1,000 nGMUNY (18 decimals) = 1,000,000,000,000,000,000,000 base units
+- User has: 1,000 OldToken (2 decimals) = 100,000 base units
+- User receives: 1,000 NewToken (18 decimals) = 1,000,000,000,000,000,000,000 base units
 
 ## Security Considerations
 
@@ -124,8 +124,8 @@ migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
 
 Update these after deployment:
 ```
-GMUNY Token: 0x... (existing)
-nGMUNY Token: 0x... (new)
+OldToken Token: 0x... (existing)
+NewToken Token: 0x... (new)
 Migration Contract: 0x...
 ```
 
@@ -148,7 +148,7 @@ forge test --gas-report
 Using CREATE3 provides:
 - **Deterministic addresses** before deployment
 - **Cross-chain same addresses** if using same salt
-- **Deployment order independence** between nGMUNY and migration contracts
+- **Deployment order independence** between NewToken and migration contracts
 
 ## Support
 
@@ -210,7 +210,7 @@ $ anvil
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+$ forge script script/Counter.s.sol:CounterScript --rpc-url <RPC_URL> --private-key <PRIVATE_KEY>
 ```
 
 ### Cast
