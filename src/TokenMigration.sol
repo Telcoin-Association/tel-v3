@@ -18,7 +18,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
     IERC20 public immutable oldToken;
     IERC20 public immutable newToken;
     address public constant BURN_ADDRESS =
-        0x000000000000000000000000000000000000dEaD;
+        0x000000000000000000000000000000000000dEaD; /// @dev used bc TEL disallows transfers to zero address
 
     // Decimal difference multiplier (10^16)
     uint256 public constant DECIMAL_MULTIPLIER = 10 ** 16;
@@ -67,6 +67,9 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
         uint256 userBalance = oldToken.balanceOf(msg.sender);
         if (userBalance == 0) revert InvalidAmount();
 
+        /// @dev allowance checks are not strictly necessary since the token already does it
+        /// however depending on what the frontend for this will look like, an approval check
+        /// like this can be used to write a fn allowing migration on users' behalf (if useful)
         // user must have sufficient allowance
         uint256 allowance = oldToken.allowance(msg.sender, address(this));
         if (allowance < userBalance) {
@@ -95,10 +98,12 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @param to Address to send the tokens to
      */
     function withdrawRemainingNewToken(address to) external onlyOwner {
+        /// @dev nit since it's onlyOwner but since we're using address(0xdead) as burn address, should disallow it here too
         if (to == address(0)) revert ZeroAddress();
 
         // check remaining balance
         uint256 balance = newToken.balanceOf(address(this));
+        /// @dev like in `migrate()`, this is handled by ERC20 logic so it's not strictly necessary
         if (balance == 0) revert InvalidAmount();
 
         // transfer remaining
@@ -119,6 +124,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
         address tokenAddress,
         uint256 amount
     ) external onlyOwner {
+        /// @dev nit since it's onlyOwner but since we're using address(0xdead) as burn address, should disallow it here too
         if (destination == address(0)) revert ZeroAddress();
         if (address(tokenAddress) == address(0)) revert ZeroAddress();
         if (address(tokenAddress) == address(newToken))
@@ -163,6 +169,8 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @return Total oldToken removed from circulation
      */
     function totalOldTokenBurned() external view returns (uint256) {
+        /// @dev also reflects when someone sends oldToken directly to BURN_ADDRESS without migrating 
+        /// presumably nobody would do this but it does break one of the listed invariants that `balanceOf(BURN_ADDRESS) == totalMigrated`
         return oldToken.balanceOf(BURN_ADDRESS);
     }
 }

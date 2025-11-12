@@ -32,6 +32,12 @@ contract DeployScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        /// @dev these salts can theoretically be frontrun after deployment to an initial chain
+        /// attacker can watch for initial deployment tx, extract salts from tx, and deploy to other chains
+        /// this type of attack is sometimes fine with create2 but with create3 the deterministic address 
+        /// is not reliant on fixed contract bytecode + constructor args, so risk is higher since attacker
+        /// can provide different constructor args or even use entirely new malicious contract bytecode
+        /// @dev double check if we committed to custom-linked ITS tokenID, in case the deployment salt needs to be Axelar-compliant
         // Generate random salts for CREATE3
         bytes32 NewTokenSalt = keccak256(
             abi.encodePacked("NewToken", block.timestamp, deployer)
@@ -71,7 +77,7 @@ contract DeployScript is Script {
 
         // Deploy NewToken token with migration contract as initial mint recipient
         bytes memory NewTokenBytecode = abi.encodePacked(
-            type(NEWT).creationCode,
+            type(NewToken).creationCode,
             abi.encode(migrationAddress)
         );
 
@@ -86,7 +92,7 @@ contract DeployScript is Script {
         );
 
         // Verify deployment
-        NEWT token = NewToken(NewTokenAddress);
+        NewToken token = NewToken(NewTokenAddress);
         console.log("NewToken total supply:", token.totalSupply());
         console.log(
             "Migration contract NewToken balance:",
