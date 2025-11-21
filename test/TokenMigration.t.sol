@@ -75,6 +75,13 @@ contract TokenMigrationTest is Test {
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
 
+        // verify TelcoinV3 has 18 decimals
+        assertEq(
+            IERC20Metadata(address(telcoinV3)).decimals(),
+            18,
+            "Telcoin V3 should have 18 decimals"
+        );
+
         // deploy token migration contract
         bytes memory migrationArgs = abi.encodePacked(
             type(TokenMigration).creationCode,

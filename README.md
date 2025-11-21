@@ -1,30 +1,35 @@
-# OldToken to NewToken Migration
+# OldToken to Telcoin V3 Migration
 
 ## Overview
-This project implements a migration system from OldToken (2 decimals) to NewToken (18 decimals) tokens at a 1:1 exchange rate using CREATE3 for deterministic deployment.
+
+This project implements a migration system from OldToken (2 decimals) to Telcoin V3 (18 decimals) tokens at a 1:1 exchange rate using CREATE3 for deterministic deployment.
 
 ## Contract Features
 
 ### New Token
+
 - ERC-20 compliant token with 18 decimals
 - Total supply: 100 billion tokens
 - Initial mint to migration contract upon deployment
 
 ### Migration Contract
+
 - **1:1 exchange rate** with automatic decimal conversion (2 → 18)
 - **Pausable** by owner for emergency situations
 - **OldToken tokens locked permanently** in the contract after migration
 - **Owner functions:**
   - Pause/unpause migrations
-  - Withdraw remaining NewToken tokens
+  - Withdraw remaining Telcoin V3 tokens
   - Recover stuck OldToken tokens (optional emergency function)
   - Recover other accidentally sent tokens
 
 ## Deployment Instructions
 
 ### Prerequisites
+
 1. Install Foundry: https://book.getfoundry.sh/getting-started/installation
 2. Set up environment variables:
+
 ```bash
 export PRIVATE_KEY="private-key"
 export RPC_URL="ethereum-rpc-url"
@@ -32,29 +37,37 @@ export ETHERSCAN_API_KEY="etherscan-api-key" # For verification
 ```
 
 ### Step 1: Update OldToken Address
+
 Edit the deployment script and replace the placeholder with OldToken token address:
+
 ```solidity
 address constant OLDTOKEN_ADDRESS = 0x... // old token address
 ```
 
 ### Step 2: Deploy Contracts
+
 Run the deployment script:
+
 ```bash
 # Deploy with random salts
 forge script script/DeployScript.s.sol:DeployScript --rpc-url $RPC_URL --broadcast --verify
 
 # Or deploy with custom salts for more control
-forge script script/DeployScript.s.sol:DeployWithCustomSalt --rpc-url $RPC_URL --broadcast --verify --sig "run(string,string)" "my-newToken-salt" "my-migration-salt"
+forge script script/DeployScript.s.sol:DeployWithCustomSalt --rpc-url $RPC_URL --broadcast --verify --sig "run(string,string)" "my-telcoin-v3-salt" "my-migration-salt"
 ```
 
 ### Step 3: Verify Deployment
+
 After deployment, verify:
-1. NewToken total supply is 100B tokens (10^29 base units)
-2. Migration contract holds all NewToken tokens
-3. Migration contract has correct OldToken and NewToken addresses
+
+1. Telcoin V3 total supply is 100B tokens (10^29 base units)
+2. Migration contract holds all Telcoin V3 tokens
+3. Migration contract has correct OldToken and Telcoin V3 addresses
 
 ### Step 4: Test Migration (Optional)
+
 Test with a small amount first:
+
 ```bash
 # Run tests
 forge test -vvv
@@ -66,11 +79,13 @@ forge script script/DeployScript.s.sol:DeployScript --rpc-url $TESTNET_RPC_URL -
 ## Usage Guide
 
 ### For Users
+
 1. **Approve** the migration contract to spend OldToken tokens
 2. **Call migrate()** with the amount of OldToken want to exchange
-3. **Receive** NewToken tokens automatically (amount × 10^16)
+3. **Receive** Telcoin V3 tokens automatically (amount × 10^16)
 
 Example using Etherscan:
+
 1. Go to OldToken token contract
 2. Call `approve(migrationAddress, amount)`
 3. Go to Migration contract
@@ -79,19 +94,24 @@ Example using Etherscan:
 ### For Owner/Admin
 
 #### Pause Migrations
+
 ```solidity
 migration.pause() // Stop all migrations
 migration.unpause() // Resume migrations
 ```
 
-#### Withdraw Remaining NewToken
+#### Withdraw Remaining Telcoin V3
+
 After migration period ends:
+
 ```solidity
-migration.withdrawRemainingNewToken(treasuryAddress)
+migration.withdrawRemainingTelcoinV3(treasuryAddress)
 ```
 
 #### Recover Stuck Tokens
+
 If needed:
+
 ```solidity
 migration.recoverStuckOldToken(recoveryAddress) // For OldToken
 migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
@@ -100,12 +120,13 @@ migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
 ## Key Calculations
 
 - **OldToken (2 decimals):** 100B = 10,000,000,000.00 = 10^13 base units
-- **NewToken (18 decimals):** 100B = 100,000,000,000.000000000000000000 = 10^29 base units
+- **Telcoin V3 (18 decimals):** 100B = 100,000,000,000.000000000000000000 = 10^29 base units
 - **Conversion multiplier:** 10^16 (to convert from 2 to 18 decimals)
 
 ### Example Migration
+
 - User has: 1,000 OldToken (2 decimals) = 100,000 base units
-- User receives: 1,000 NewToken (18 decimals) = 1,000,000,000,000,000,000,000 base units
+- User receives: 1,000 Telcoin V3 (18 decimals) = 1,000,000,000,000,000,000,000 base units
 
 ## Security Considerations
 
@@ -123,15 +144,17 @@ migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
 ## Addresses (After Deployment)
 
 Update these after deployment:
+
 ```
 OldToken Token: 0x... (existing)
-NewToken Token: 0x... (new)
+Telcoin V3 Token: 0x... (new)
 Migration Contract: 0x...
 ```
 
 ## Testing
 
 Run the full test suite:
+
 ```bash
 # Run all tests
 forge test
@@ -146,13 +169,15 @@ forge test --gas-report
 ## CREATE3 Benefits
 
 Using CREATE3 provides:
+
 - **Deterministic addresses** before deployment
 - **Cross-chain same addresses** if using same salt
-- **Deployment order independence** between NewToken and migration contracts
+- **Deployment order independence** between Telcoin V3 and migration contracts
 
 ## Support
 
 For issues or questions:
+
 1. Check contract events for migration history
 2. Use read functions to check balances and rates
 3. Ensure sufficient gas for transactions (recommend 150,000 gas limit)
@@ -160,16 +185,17 @@ For issues or questions:
 ## License
 
 MIT
+
 ## Foundry
 
 **Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
 Foundry consists of:
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
+- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
+- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
+- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
 ## Documentation
 

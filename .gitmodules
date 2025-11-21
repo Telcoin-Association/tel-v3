@@ -7,3 +7,6 @@
 [submodule "lib/create3"]
 	path = lib/create3
 	url = https://github.com/0xsequence/create3
+[submodule "lib/interchain-token-service"]
+	path = lib/interchain-token-service
+	url = https://github.com/axelarnetwork/interchain-token-service

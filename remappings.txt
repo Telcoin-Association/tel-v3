@@ -1,0 +1,1 @@
+interchain-token-service/=lib/interchain-token-service
