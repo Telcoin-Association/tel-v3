@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
-import "../src/NewToken.sol";
-import "../src/TokenMigration.sol";
-import "../deployments/Create3Utils.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Test} from "forge-std/Test.sol";
+import {TelcoinV3} from "../src/TelcoinV3.sol";
+import {TokenMigration} from "../src/TokenMigration.sol";
+import {Create3Utils} from "../deployments/Create3Utils.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract TokenMigrationFuzzTest is Test {
     // contracts
     IERC20 public oldToken;
-    NewToken public newToken;
+    TelcoinV3 public telcoinV3;
     TokenMigration public migration;
-    Create3Impl public create3;
+    Create3Utils public create3;
 
     // addresses
     address public owner = 0xF262D0995Da87FFF7a1d20635eA440Fac96CC5C1;
@@ -28,19 +28,19 @@ contract TokenMigrationFuzzTest is Test {
     uint256 constant MAX_UINT256 = type(uint256).max;
 
     // fork
-    string ETHEREUM_RPC_URI = vm.envString("ETHEREUM_RPC_URI");
-    uint256 ethereum_fork;
+    string ethereumRpcUrl = vm.envString("ETHEREUM_RPC_URL");
+    uint256 ethereumFork;
 
     function setUp() public {
         // fork ethereum
-        ethereum_fork = vm.createFork(ETHEREUM_RPC_URI);
-        vm.selectFork(ethereum_fork);
+        ethereumFork = vm.createFork(ethereumRpcUrl);
+        vm.selectFork(ethereumFork);
 
         // existing token
         oldToken = IERC20(OLD_TOKEN_ADDRESS);
 
         // deploy create3 util contract
-        create3 = new Create3Impl();
+        create3 = new Create3Utils();
 
         vm.deal(deployer, 1 ether);
         vm.startPrank(deployer);
@@ -52,7 +52,7 @@ contract TokenMigrationFuzzTest is Test {
         // deploy new token using create3
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(NewToken).creationCode,
+            type(TelcoinV3).creationCode,
             abi.encode(
                 INITIAL_NEW_TOKEN_SUPPLY,
                 owner,
@@ -60,12 +60,12 @@ contract TokenMigrationFuzzTest is Test {
             )
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
-        newToken = NewToken(deployment);
+        telcoinV3 = TelcoinV3(deployment);
 
         // deploy token migration contract
         bytes memory migrationArgs = abi.encodePacked(
             type(TokenMigration).creationCode,
-            abi.encode(address(oldToken), address(newToken), owner)
+            abi.encode(address(oldToken), address(telcoinV3), owner)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);
@@ -89,7 +89,7 @@ contract TokenMigrationFuzzTest is Test {
         uint256 initialBurnBalance = oldToken.balanceOf(
             migration.BURN_ADDRESS()
         );
-        uint256 initialMigrationBalance = newToken.balanceOf(
+        uint256 initialMigrationBalance = telcoinV3.balanceOf(
             address(migration)
         );
 
@@ -109,7 +109,7 @@ contract TokenMigrationFuzzTest is Test {
 
         // User should have correct new token amount
         assertEq(
-            newToken.balanceOf(user),
+            telcoinV3.balanceOf(user),
             expectedNewAmount,
             "Incorrect new token balance"
         );
@@ -123,7 +123,7 @@ contract TokenMigrationFuzzTest is Test {
 
         // Migration contract balance should decrease correctly
         assertEq(
-            newToken.balanceOf(address(migration)),
+            telcoinV3.balanceOf(address(migration)),
             initialMigrationBalance - expectedNewAmount,
             "Migration balance mismatch"
         );
@@ -165,7 +165,7 @@ contract TokenMigrationFuzzTest is Test {
         }
 
         // Calculate if all can migrate
-        uint256 availableNewTokens = newToken.balanceOf(address(migration));
+        uint256 availableTelcoinV3s = telcoinV3.balanceOf(address(migration));
 
         // Record initial state
         uint256 initialBurnBalance = oldToken.balanceOf(
@@ -187,7 +187,7 @@ contract TokenMigrationFuzzTest is Test {
             uint256 requiredNew = balances[userIndex] *
                 migration.DECIMAL_MULTIPLIER();
 
-            if (requiredNew <= newToken.balanceOf(address(migration))) {
+            if (requiredNew <= telcoinV3.balanceOf(address(migration))) {
                 vm.prank(users[userIndex]);
                 migration.migrate();
 
@@ -196,7 +196,7 @@ contract TokenMigrationFuzzTest is Test {
                 totalMigratedNew += requiredNew;
 
                 // Verify user got their tokens
-                assertEq(newToken.balanceOf(users[userIndex]), requiredNew);
+                assertEq(telcoinV3.balanceOf(users[userIndex]), requiredNew);
                 assertEq(oldToken.balanceOf(users[userIndex]), 0);
 
                 balances[userIndex] = 0; // Mark as migrated
@@ -215,7 +215,7 @@ contract TokenMigrationFuzzTest is Test {
             "Total burned mismatch"
         );
         assertEq(
-            availableNewTokens - newToken.balanceOf(address(migration)),
+            availableTelcoinV3s - telcoinV3.balanceOf(address(migration)),
             totalMigratedNew,
             "Total migrated new tokens mismatch"
         );
@@ -237,16 +237,16 @@ contract TokenMigrationFuzzTest is Test {
         deal(address(oldToken), whale, testAmount);
 
         // Ensure migration contract has enough new tokens
-        uint256 requiredNewTokens = testAmount * migration.DECIMAL_MULTIPLIER();
+        uint256 requiredTelcoinV3s = testAmount * migration.DECIMAL_MULTIPLIER();
         vm.prank(owner);
-        deal(address(newToken), address(migration), requiredNewTokens);
+        deal(address(telcoinV3), address(migration), requiredTelcoinV3s);
 
         vm.startPrank(whale);
         oldToken.approve(address(migration), testAmount);
         migration.migrate();
         vm.stopPrank();
 
-        assertEq(newToken.balanceOf(whale), requiredNewTokens);
+        assertEq(telcoinV3.balanceOf(whale), requiredTelcoinV3s);
         assertEq(oldToken.balanceOf(whale), 0);
     }
 
@@ -263,15 +263,15 @@ contract TokenMigrationFuzzTest is Test {
         address user = address(uint160(uint256(keccak256("exact_user"))));
 
         // Set migration contract to have exactly what's needed
-        uint256 exactNewTokens = amount * migration.DECIMAL_MULTIPLIER();
+        uint256 exactTelcoinV3s = amount * migration.DECIMAL_MULTIPLIER();
         vm.prank(owner);
 
         // First withdraw all tokens
-        migration.withdrawRemainingNewToken(owner);
+        migration.withdrawRemainingTelcoinV3(owner);
 
         // Then send back exactly what's needed
         vm.prank(owner);
-        newToken.transfer(address(migration), exactNewTokens);
+        require(telcoinV3.transfer(address(migration), exactTelcoinV3s));
 
         // Fund user and migrate
         deal(address(oldToken), user, amount);
@@ -282,8 +282,8 @@ contract TokenMigrationFuzzTest is Test {
         vm.stopPrank();
 
         // Contract should have exactly 0 new tokens left
-        assertEq(newToken.balanceOf(address(migration)), 0);
-        assertEq(newToken.balanceOf(user), exactNewTokens);
+        assertEq(telcoinV3.balanceOf(address(migration)), 0);
+        assertEq(telcoinV3.balanceOf(user), exactTelcoinV3s);
     }
 
     /**
@@ -293,12 +293,12 @@ contract TokenMigrationFuzzTest is Test {
         amount = bound(amount, 2, MAX_OLD_TOKEN_AMOUNT);
 
         address user = address(uint160(uint256(keccak256("onewei_user"))));
-        uint256 requiredNewTokens = amount * migration.DECIMAL_MULTIPLIER();
+        uint256 requiredTelcoinV3s = amount * migration.DECIMAL_MULTIPLIER();
 
         // Set migration contract to be 1 wei short
         vm.startPrank(owner);
-        migration.withdrawRemainingNewToken(owner);
-        newToken.transfer(address(migration), requiredNewTokens - 1);
+        migration.withdrawRemainingTelcoinV3(owner);
+        require(telcoinV3.transfer(address(migration), requiredTelcoinV3s - 1));
         vm.stopPrank();
 
         // Fund user
@@ -311,8 +311,8 @@ contract TokenMigrationFuzzTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 TokenMigration.InsufficientContractBalance.selector,
-                requiredNewTokens,
-                requiredNewTokens - 1
+                requiredTelcoinV3s,
+                requiredTelcoinV3s - 1
             )
         );
         migration.migrate();
@@ -366,7 +366,7 @@ contract TokenMigrationFuzzTest is Test {
 
             assertEq(oldToken.balanceOf(user), 0);
             assertEq(
-                newToken.balanceOf(user),
+                telcoinV3.balanceOf(user),
                 amount * migration.DECIMAL_MULTIPLIER()
             );
         }
@@ -386,7 +386,7 @@ contract TokenMigrationFuzzTest is Test {
         vm.stopPrank();
 
         // Should receive 10^16 new tokens (0.01 * 10^18 = 10^16)
-        assertEq(newToken.balanceOf(user1), 10 ** 16);
+        assertEq(telcoinV3.balanceOf(user1), 10 ** 16);
 
         // Test 2: Amounts that might cause precision issues in other implementations
         uint256[5] memory testAmounts = [
@@ -398,6 +398,7 @@ contract TokenMigrationFuzzTest is Test {
         ];
 
         for (uint256 i = 0; i < testAmounts.length; i++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
             address user = address(uint160(i + 2));
             uint256 oldAmount = testAmounts[i];
 
@@ -410,7 +411,7 @@ contract TokenMigrationFuzzTest is Test {
 
             uint256 expectedNewAmount = oldAmount * 10 ** 16;
             assertEq(
-                newToken.balanceOf(user),
+                telcoinV3.balanceOf(user),
                 expectedNewAmount,
                 "Decimal conversion precision error"
             );
@@ -430,7 +431,7 @@ contract TokenMigrationFuzzTest is Test {
     function testFuzz_RecoverVariousTokens(
         uint8 decimals,
         uint256 amount,
-        uint256 seed
+        uint160 seed
     ) public {
         // Test various decimal places
         decimals = uint8(bound(decimals, 0, 36));
@@ -450,18 +451,19 @@ contract TokenMigrationFuzzTest is Test {
         randomToken.mint(address(migration), amount);
 
         // Generate random recipient
+        // forge-lint: disable-next-line(unsafe-typecast)
         address recipient = address(uint160(seed));
         vm.assume(recipient != address(0));
         vm.assume(recipient != address(migration));
 
-        // Verify cannot recover newToken
+        // Verify cannot recover TelcoinV3
         vm.prank(owner);
         vm.expectRevert(TokenMigration.CannotRecoverProtectedToken.selector);
-        migration.recoverERC20(recipient, address(newToken), 1);
+        migration.recoverERC20(recipient, address(telcoinV3));
 
         // Should successfully recover random token
         vm.prank(owner);
-        migration.recoverERC20(recipient, address(randomToken), amount);
+        migration.recoverERC20(recipient, address(randomToken));
 
         assertEq(randomToken.balanceOf(recipient), amount);
         assertEq(randomToken.balanceOf(address(migration)), 0);
@@ -476,7 +478,7 @@ contract TokenMigrationFuzzTest is Test {
         vm.assume(userAmounts.length > 0 && userAmounts.length <= 100);
 
         uint256 initialTotalSupply = oldToken.totalSupply();
-        uint256 initialNewSupply = newToken.totalSupply();
+        uint256 initialNewSupply = telcoinV3.totalSupply();
         uint256 initialBurnBalance = oldToken.balanceOf(
             migration.BURN_ADDRESS()
         );
@@ -492,12 +494,13 @@ contract TokenMigrationFuzzTest is Test {
 
             if (userAmounts[i] == 0) continue;
 
+            // forge-lint: disable-next-line(unsafe-typecast)
             address user = address(uint160(i + 1));
-            uint256 newTokensRequired = userAmounts[i] *
+            uint256 telcoinV3sRequired = userAmounts[i] *
                 migration.DECIMAL_MULTIPLIER();
 
             // Skip if would exceed available
-            if (newTokensRequired > newToken.balanceOf(address(migration))) {
+            if (telcoinV3sRequired > telcoinV3.balanceOf(address(migration))) {
                 continue;
             }
 
@@ -515,7 +518,7 @@ contract TokenMigrationFuzzTest is Test {
         assertEq(oldToken.totalSupply(), initialTotalSupply);
 
         // Invariant 2: New token total supply unchanged (only transferred, not minted)
-        assertEq(newToken.totalSupply(), initialNewSupply);
+        assertEq(telcoinV3.totalSupply(), initialNewSupply);
 
         // Invariant 3: Burn address received all migrated old tokens
         assertEq(
@@ -527,7 +530,7 @@ contract TokenMigrationFuzzTest is Test {
         uint256 totalNewDistributed = totalMigrated *
             migration.DECIMAL_MULTIPLIER();
         assertEq(
-            INITIAL_NEW_TOKEN_SUPPLY - newToken.balanceOf(address(migration)),
+            INITIAL_NEW_TOKEN_SUPPLY - telcoinV3.balanceOf(address(migration)),
             totalNewDistributed
         );
     }
