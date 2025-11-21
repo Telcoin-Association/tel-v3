@@ -18,8 +18,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
     IERC20 public immutable oldToken;
     IERC20 public immutable telcoinV3;
     /// @dev TEL disallows transfers to zero address
-    address public constant BURN_ADDRESS =
-        0x000000000000000000000000000000000000dEaD;
+    address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
 
     // Decimal difference multiplier (10^16)
     uint256 public constant DECIMAL_MULTIPLIER = 10 ** 16;
@@ -31,11 +30,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event RemainingTokensWithdrawn(address indexed to, uint256 amount);
-    event StuckTokensRecovered(
-        address indexed token,
-        address indexed to,
-        uint256 amount
-    );
+    event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
 
     // errors
     error InsufficientContractBalance(uint256 required, uint256 available);
@@ -49,11 +44,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
      * @param _owner Owner address
      */
-    constructor(
-        address _oldToken,
-        address _telcoinV3,
-        address _owner
-    ) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _owner) Ownable(_owner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
 
         oldToken = IERC20(_oldToken);
@@ -111,10 +102,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @param destination The address to send the recovered tokens
      * @param tokenAddress The address of the token to recover
      */
-    function recoverERC20(
-        address destination,
-        address tokenAddress
-    ) external onlyOwner {
+    function recoverERC20(address destination, address tokenAddress) external onlyOwner {
         if (destination == address(0) || destination == BURN_ADDRESS) revert ZeroAddress();
         if (tokenAddress == address(0)) revert ZeroAddress();
         if (tokenAddress == address(telcoinV3)) revert CannotRecoverProtectedToken();

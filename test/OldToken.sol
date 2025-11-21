@@ -15,9 +15,7 @@ contract OldToken is ERC20, Ownable {
      * @dev Constructor that mints total supply to the migration contract
      * @param _migrationContract Address that will receive the initial mint
      */
-    constructor(
-        address _migrationContract
-    ) ERC20("OldToken", "OLDT") Ownable(msg.sender) {
+    constructor(address _migrationContract) ERC20("OldToken", "OLDT") Ownable(msg.sender) {
         require(_migrationContract != address(0), "Invalid migration contract");
         _mint(_migrationContract, TOTAL_SUPPLY);
     }

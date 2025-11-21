@@ -25,8 +25,7 @@ contract TokenMigrationTest is Test {
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
 
     // constants
-    address constant OLDTOKEN_ADDRESS =
-        0x467Bccd9d29f223BcE8043b84E8C8B282827790F; // ethereum
+    address constant OLDTOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F; // ethereum
     uint256 constant OLDTOKEN_SUPPLY = 100_000_000_000 * 10 ** 2; // 100B with 2 decimals
     uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 10_000_000_000 * 10 ** 18; // 10B with 18 decimals
     uint256 constant INITIAL_USER_BAL = 1_000_000 * 10 ** 2;
@@ -44,11 +43,7 @@ contract TokenMigrationTest is Test {
         oldToken = IERC20(OLDTOKEN_ADDRESS);
 
         // verify oldToken has 2 decimals
-        assertEq(
-            IERC20Metadata(address(oldToken)).decimals(),
-            2,
-            "OldToken should have 2 decimals"
-        );
+        assertEq(IERC20Metadata(address(oldToken)).decimals(), 2, "OldToken should have 2 decimals");
 
         // deploy create3 util contract
         create3 = new Create3Utils();
@@ -65,27 +60,17 @@ contract TokenMigrationTest is Test {
         // deploy new token using create3 and mint to migration contract
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode,
-            abi.encode(
-                INITIAL_NEW_TOKEN_SUPPLY,
-                owner,
-                expectedMigrationAddress
-            )
+            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner, expectedMigrationAddress)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
 
         // verify TelcoinV3 has 18 decimals
-        assertEq(
-            IERC20Metadata(address(telcoinV3)).decimals(),
-            18,
-            "Telcoin V3 should have 18 decimals"
-        );
+        assertEq(IERC20Metadata(address(telcoinV3)).decimals(), 18, "Telcoin V3 should have 18 decimals");
 
         // deploy token migration contract
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode,
-            abi.encode(address(oldToken), address(telcoinV3), owner)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         assertEq(expectedMigrationAddress, migrationAddress);
@@ -104,15 +89,10 @@ contract TokenMigrationTest is Test {
         // check initial balances
         assertEq(oldToken.balanceOf(user1), INITIAL_USER_BAL);
         assertEq(telcoinV3.balanceOf(user1), 0);
-        assertEq(
-            telcoinV3.balanceOf(address(migration)),
-            INITIAL_NEW_TOKEN_SUPPLY
-        );
+        assertEq(telcoinV3.balanceOf(address(migration)), INITIAL_NEW_TOKEN_SUPPLY);
 
         // take current burn balance since this forks live
-        uint256 currentBurnBalance = oldToken.balanceOf(
-            migration.BURN_ADDRESS()
-        );
+        uint256 currentBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
 
         // approve migration contract
         oldToken.approve(address(migration), INITIAL_USER_BAL);
@@ -122,16 +102,10 @@ contract TokenMigrationTest is Test {
 
         // check user's final balances
         assertEq(oldToken.balanceOf(user1), 0);
-        assertEq(
-            telcoinV3.balanceOf(user1),
-            INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER()
-        );
+        assertEq(telcoinV3.balanceOf(user1), INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER());
         // check tokens were burned
         uint256 expectedBurnBalance = currentBurnBalance + INITIAL_USER_BAL;
-        assertEq(
-            oldToken.balanceOf(migration.BURN_ADDRESS()),
-            expectedBurnBalance
-        );
+        assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), expectedBurnBalance);
 
         vm.stopPrank();
     }
@@ -210,36 +184,16 @@ contract TokenMigrationTest is Test {
     function testOnlyOwnerFunctions() public {
         vm.startPrank(user1);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                user1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         migration.pause();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                user1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         migration.unpause();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                user1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         migration.withdrawRemainingTelcoinV3(user1);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                Ownable.OwnableUnauthorizedAccount.selector,
-                user1
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
 
         migration.recoverERC20(user1, OLDTOKEN_ADDRESS);
 
@@ -276,11 +230,7 @@ contract TokenMigrationTest is Test {
 
         // owner tries to recover new token
         vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                TokenMigration.CannotRecoverProtectedToken.selector
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(TokenMigration.CannotRecoverProtectedToken.selector));
         migration.recoverERC20(user1, address(telcoinV3));
     }
 }

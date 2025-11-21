@@ -25,11 +25,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Ownable {
      * @param _owner The owner (Telcoin TAO Governance Safe)
      * @param _migration The TokenMigration contract that receives `_initialSupply` for this chain
      */
-    constructor(
-        uint256 _initialSupply,
-        address _owner,
-        address _migration
-    ) ERC20("Telcoin", "TEL") Ownable(_owner) {
+    constructor(uint256 _initialSupply, address _owner, address _migration) ERC20("Telcoin", "TEL") Ownable(_owner) {
         require(_initialSupply < TOTAL_SUPPLY, "Invalid mint amount");
         _mint(_migration, _initialSupply);
     }
@@ -61,7 +57,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Ownable {
         //todo
         // return keccak256(abi.encode(PREFIX_INTERCHAIN_TOKEN_ID, TOKEN_FACTORY_DEPLOYER, linkedTokenDeploySalt()));
     }
-    
+
     /// @inheritdoc InterchainTokenStandard
     function interchainTokenService() public view override returns (address) {
         //todo
@@ -69,11 +65,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Ownable {
     }
 
     /// @dev Required by InterchainTokenStandard
-    function _spendAllowance(
-        address sender,
-        address spender,
-        uint256 amount
-    )
+    function _spendAllowance(address sender, address spender, uint256 amount)
         internal
         virtual
         override(ERC20, InterchainTokenStandard)
