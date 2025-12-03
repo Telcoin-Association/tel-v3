@@ -71,7 +71,7 @@ contract TokenMigrationFuzzTest is Test {
 
         // deploy token migration contract
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);

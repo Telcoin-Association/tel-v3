@@ -28,14 +28,19 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
     /// @notice The total amount of TEL migrated via this contract,
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
+    /// @notice The timestamp after which the owner can withdraw unmigrated tokens
+    /// @notice This is for public availability (not security) and is owner-configurable
+    uint256 public migrationEndTime;
 
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event RemainingTokensWithdrawn(address indexed to, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
+    event MigrationEndTimeUpdated(uint256 oldTime, uint256 newTime);
 
     // errors
     error InsufficientContractBalance(uint256 required, uint256 available);
+    error MigrationPeriodNotEnded(uint256 currentTime, uint256 unlockTime);
     error InvalidAmount();
     error ZeroAddress();
     error CannotRecoverProtectedToken();
@@ -45,12 +50,16 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @param _oldToken Address of the old oldToken token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
      * @param _owner Owner address
+     * @param _migrationDuration The duration (in seconds) the migration window should remain open (e.g. 365 days)
      */
-    constructor(address _oldToken, address _telcoinV3, address _owner) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationDuration) Ownable(_owner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
 
         oldToken = IERC20(_oldToken);
         telcoinV3 = IERC20(_telcoinV3);
+
+        // Set the initial end time based on deployment time + duration
+        migrationEndTime = block.timestamp + _migrationDuration;
     }
 
     /**
@@ -83,9 +92,13 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @dev Withdraw remaining TelcoinV3 tokens (owner only)
+     * @notice Can only be called after migrationEndTime has passed
      * @param to Address to send the tokens to
      */
     function withdrawRemainingTelcoinV3(address to) external onlyOwner {
+        if (block.timestamp < migrationEndTime) {
+            revert MigrationPeriodNotEnded(block.timestamp, migrationEndTime);
+        }
         if (to == address(0) || to == BURN_ADDRESS) revert ZeroAddress();
 
         // check remaining balance
@@ -95,6 +108,16 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
         // transfer remaining
         telcoinV3.safeTransfer(to, balance);
         emit RemainingTokensWithdrawn(to, balance);
+    }
+
+    /**
+     * @dev Update the migration end time (owner only)
+     * @notice This allows the owner to shorten or extend the migration window
+     * @param _newTime The new absolute timestamp for the migration end
+     */
+    function updateMigrationEndTime(uint256 _newTime) external onlyOwner {
+        migrationEndTime = _newTime;
+        emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
     }
 
     /**
