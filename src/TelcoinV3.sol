@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {InterchainTokenStandard} from "interchain-token-service/contracts/interchain-token/InterchainTokenStandard.sol";
 import {Minter} from "interchain-token-service/contracts/utils/Minter.sol";
 import {Create3AddressFixed} from "interchain-token-service/contracts/utils/Create3AddressFixed.sol";
@@ -11,7 +12,7 @@ import {Create3AddressFixed} from "interchain-token-service/contracts/utils/Crea
  * @title Telcoin
  * @notice Telcoin V3 featuring interchain support and 18 decimals
  */
-contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3AddressFixed {
+contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3AddressFixed, Pausable {
     error NotMinter(address addr);
 
     /// @notice Token factory flag to be create3-agnostic; see `InterchainTokenService::TOKEN_FACTORY_DEPLOYER`
@@ -69,18 +70,12 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
     /// @notice InterchainTEL implementation for ITS Token Manager's mint API
     /// @dev Used by a Axelar TokenManager to manage interchain transfers
     /// @notice Can be used for future supply inflation in line with long term Telcoin roadmap
-    function mint(address to, uint256 amount)
-        external
-        onlyMinter(msg.sender) /**
-                                * toido: pausable
-                                */
-
-    {
+    function mint(address to, uint256 amount) external onlyMinter(msg.sender) whenNotPaused {
         _mint(to, amount);
     }
 
     /// @notice TelcoinV3 implementation for ITS Token Manager's burn API
-    function burn(address from, uint256 amount) external onlyMinter(msg.sender) {
+    function burn(address from, uint256 amount) external onlyMinter(msg.sender) whenNotPaused {
         _burn(from, amount);
     }
 
@@ -133,5 +128,18 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
         override(ERC20, InterchainTokenStandard)
     {
         ERC20._spendAllowance(sender, spender, amount);
+    }
+
+    /**
+     *
+     *   pausability
+     *
+     */
+    function pause() public whenNotPaused onlyOwner {
+        _pause();
+    }
+
+    function unpause() public whenPaused onlyOwner {
+        _unpause();
     }
 }
