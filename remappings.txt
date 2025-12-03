@@ -1,1 +1,2 @@
 interchain-token-service/=lib/interchain-token-service
+@axelar-network/axelar-gmp-sdk-solidity/=lib/axelar-gmp-sdk-solidity/

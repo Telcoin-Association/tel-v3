@@ -1,4 +1,10 @@
 {
+  "lib/axelar-gmp-sdk-solidity": {
+    "tag": {
+      "name": "v6.0.6",
+      "rev": "00682b6c3db0cc922ec0c4ea3791852c93d7ae31"
+    }
+  },
   "lib/create3": {
     "rev": "acc4703a21ec1d71dc2a99db088c4b1f467530fd"
   },

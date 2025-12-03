@@ -18,6 +18,7 @@ contract TokenMigrationFuzzTest is Test {
     // addresses
     address public owner = 0xF262D0995Da87FFF7a1d20635eA440Fac96CC5C1;
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
+    address public tokenManager = 0x7c5317523C052922259D3F17cbfACf8d84A59AD4; // interchain TEL TM
 
     // constants
     address constant OLD_TOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
@@ -51,7 +52,8 @@ contract TokenMigrationFuzzTest is Test {
         // deploy new token using create3
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner, expectedMigrationAddress)
+            type(TelcoinV3).creationCode,
+            abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner, expectedMigrationAddress, tokenManager)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
