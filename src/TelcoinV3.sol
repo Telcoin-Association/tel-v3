@@ -132,9 +132,16 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
 
     /**
      *
-     *   pausability
+     *   permissioned
      *
      */
+
+    /// @dev Minters can propose and transfer mintership roles; owner can remove minters
+    function removeMinter(address minter) public onlyOwner {
+        if (!hasRole(minter, uint8(Roles.MINTER))) revert NotMinter(minter);
+        _removeRole(minter, uint8(Roles.MINTER));
+    }
+
     function pause() public whenNotPaused onlyOwner {
         _pause();
     }
