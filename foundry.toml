@@ -15,3 +15,6 @@ include_push_bytes = true    # Include push bytes in fuzz inputs
 runs = 256                   # Number of invariant runs
 depth = 15                   # Depth of invariant calls
 shrink_run_limit = 5000      # Shrinking for invariant tests
+
+[lint]
+lint_on_build = false
