@@ -41,6 +41,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
     // errors
     error InsufficientContractBalance(uint256 required, uint256 available);
     error MigrationPeriodNotEnded(uint256 currentTime, uint256 unlockTime);
+    error InvalidEndTime(uint256 proposedTime);
     error InvalidAmount();
     error ZeroAddress();
     error CannotRecoverProtectedToken();
@@ -112,10 +113,12 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @dev Update the migration end time (owner only)
-     * @notice This allows the owner to shorten or extend the migration window
+     * @notice This allows the owner to extend the migration window
      * @param _newTime The new absolute timestamp for the migration end
      */
     function updateMigrationEndTime(uint256 _newTime) external onlyOwner {
+        if (_newTime <= migrationEndTime) revert InvalidEndTime(_newTime);
+
         migrationEndTime = _newTime;
         emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
     }
