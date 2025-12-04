@@ -19,7 +19,7 @@ contract TokenMigrationFuzzTest is Test {
     address public owner = 0xF262D0995Da87FFF7a1d20635eA440Fac96CC5C1;
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
     address private interchainTokenService = 0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C;
-    bytes32 private originSalt = keccak256("register-custom-token"); // Create3Utils::Salts.registerCustomTokenSalt
+    bytes32 private originSalt = keccak256("telcoin-v3"); // Create3Utils::Salts.registerCustomTokenSalt
     string private originChainName = "Ethereum";
 
     // constants
