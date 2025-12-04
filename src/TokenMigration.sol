@@ -131,8 +131,9 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @param tokenAddress The address of the token to recover
      */
     function recoverERC20(address destination, address tokenAddress) external onlyOwner {
-        if (destination == address(0) || destination == BURN_ADDRESS) revert ZeroAddress();
-        if (tokenAddress == address(0)) revert ZeroAddress();
+        if (destination == address(0) || destination == BURN_ADDRESS || tokenAddress == address(0)) {
+            revert ZeroAddress();
+        }
         if (tokenAddress == address(telcoinV3)) revert CannotRecoverProtectedToken();
 
         // check balance

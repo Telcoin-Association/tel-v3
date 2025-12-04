@@ -23,12 +23,12 @@ contract TelcoinV3Test is Test {
         vm.prank(owner);
         token = new TelcoinV3(
             INITIAL_SUPPLY, // initialSupply_
-            owner,          // owner_
+            owner, // owner_
             makeAddr("migration"), // migration_
             makeAddr("originTEL"), // originTEL_
             makeAddr("originLinker"), // originLinker_
             keccak256("salt"), // originSalt_
-            "Ethereum",     // originChainName_
+            "Ethereum", // originChainName_
             makeAddr("its") // interchainTokenService_
         );
 
