@@ -40,4 +40,6 @@ jobs:
       - name: Run Forge tests
         run: |
           forge test -vvv
+        env:
+          ETHEREUM_RPC_URL: ${{ secrets.ETHEREUM_RPC_URL }}
         id: test
