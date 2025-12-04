@@ -5,7 +5,7 @@ import "create3/Create3.sol";
 
 /// @dev Configuration and utilities for Create3 deterministic deployments
 
-abstract contract Create3Utils {
+contract Create3Utils {
     /// @dev Deploys a contract using `CREATE3`
     function deploy(
         bytes32 salt,
@@ -19,5 +19,3 @@ abstract contract Create3Utils {
         return Create3.addressOf(salt);
     }
 }
-
-contract Create3Impl is Create3Utils {}
