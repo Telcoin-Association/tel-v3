@@ -32,6 +32,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
     bytes32 private constant PREFIX_CUSTOM_TOKEN_SALT = keccak256("custom-token-salt");
     bytes32 private constant PREFIX_INTERCHAIN_TOKEN_ID = keccak256("its-interchain-token-id");
 
+    /// @dev Modifier to restrict functions to only callers with Axelar::Minter library role
     modifier onlyMinter(address addr) {
         if (!hasRole(addr, uint8(Roles.MINTER))) revert NotMinter(addr);
         _;
