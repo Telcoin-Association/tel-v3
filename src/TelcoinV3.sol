@@ -42,6 +42,11 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
      * @param initialSupply_ The initial supply to mint on this chain
      * @param owner_ The owner (Telcoin TAO Governance Safe)
      * @param migration_ The TokenMigration contract that receives `initialSupply_` for this chain
+     * @param originTEL_ The origin chain's TEL token address
+     * @param originLinker_ The origin chain's ITS Linker contract address
+     * @param originSalt_ The origin chain's ITS Linker salt used for custom linking
+     * @param originChainName_ The origin chain's name
+     * @param interchainTokenService_ The ITS contract address for this chain
      */
     constructor(
         uint256 initialSupply_,
