@@ -14,8 +14,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    //todo: expiry 1 yr, updateable
-
     // TEL token addresses per chain
     IERC20 public immutable oldToken;
     IERC20 public immutable telcoinV3;
