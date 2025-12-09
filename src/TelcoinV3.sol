@@ -112,14 +112,13 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
     }
 
     /// @inheritdoc InterchainTokenStandard
-    function interchainTokenService() public view virtual override returns (address) {
+    function interchainTokenService() public view override returns (address) {
         return _interchainTokenService;
     }
 
     /// @dev Required by InterchainTokenStandard
     function _spendAllowance(address sender, address spender, uint256 amount)
         internal
-        virtual
         override(ERC20, InterchainTokenStandard)
     {
         ERC20._spendAllowance(sender, spender, amount);
