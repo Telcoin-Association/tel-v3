@@ -32,12 +32,6 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable2Step, Crea
     bytes32 private constant PREFIX_CUSTOM_TOKEN_SALT = keccak256("custom-token-salt");
     bytes32 private constant PREFIX_INTERCHAIN_TOKEN_ID = keccak256("its-interchain-token-id");
 
-    /// @dev Modifier to restrict functions to only callers with Axelar::Minter library role
-    modifier onlyMinter(address addr) {
-        if (!hasRole(addr, uint8(Roles.MINTER))) revert NotMinter(addr);
-        _;
-    }
-
     /**
      * @dev Constructor that mints amount specified to the migration contract
      * @param initialSupply_ The initial supply to mint on this chain
@@ -73,12 +67,12 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable2Step, Crea
     /// @notice InterchainTEL implementation for ITS Token Manager's mint API
     /// @dev Used by a Axelar TokenManager to manage interchain transfers
     /// @notice Can be used for future supply inflation in line with long term Telcoin roadmap
-    function mint(address to, uint256 amount) external onlyMinter(msg.sender) whenNotPaused {
+    function mint(address to, uint256 amount) external onlyRole(uint8(Roles.MINTER)) whenNotPaused {
         _mint(to, amount);
     }
 
     /// @notice TelcoinV3 implementation for ITS Token Manager's burn API
-    function burn(address from, uint256 amount) external onlyMinter(msg.sender) whenNotPaused {
+    function burn(address from, uint256 amount) external onlyRole(uint8(Roles.MINTER)) whenNotPaused {
         _burn(from, amount);
     }
 
