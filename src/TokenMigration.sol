@@ -121,6 +121,8 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         if (_newTime <= migrationEndTime || _newTime > block.timestamp + MAX_EXTENSION_PERIOD) {
             revert InvalidEndTime(_newTime);
         }
+        uint256 bal = remainingTelcoinV3Balance();
+        if (bal == 0) revert InsufficientContractBalance(1, bal);
 
         emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
         migrationEndTime = _newTime;
