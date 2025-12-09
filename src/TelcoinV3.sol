@@ -131,11 +131,11 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable2Step, Crea
         _removeRole(minter, uint8(Roles.MINTER));
     }
 
-    function pause() public whenNotPaused onlyOwner {
+    function pause() public onlyOwner {
         _pause();
     }
 
-    function unpause() public whenPaused onlyOwner {
+    function unpause() public onlyOwner {
         _unpause();
     }
 }
