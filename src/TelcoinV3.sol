@@ -17,7 +17,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
 
     /// @notice Token factory flag to be create3-agnostic; see `InterchainTokenService::TOKEN_FACTORY_DEPLOYER`
     address private constant TOKEN_FACTORY_DEPLOYER = address(0x0);
-    uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10 ** 18; // 100B tokens with 18 decimals
+    uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 * 10 ** 18; // 100B tokens with 18 decimals
 
     /// @dev The Axelar ITS TokenManager contract address for this token
     address private immutable tokenManager;
@@ -56,7 +56,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
         string memory originChainName_,
         address interchainTokenService_
     ) ERC20("Telcoin", "TEL") Ownable(owner_) {
-        require(initialSupply_ < TOTAL_SUPPLY, "Invalid mint amount");
+        require(initialSupply_ < MIGRATION_SUPPLY_CAP, "Invalid mint amount");
 
         originLinker = originLinker_;
         originSalt = originSalt_;
