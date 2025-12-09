@@ -93,13 +93,6 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
         return keccak256(abi.encode(PREFIX_CUSTOM_TOKEN_SALT, originChainNameHash, originLinker, originSalt));
     }
 
-    /// @notice Returns the create3 salt used by ITS for TokenManager deployment
-    /// @dev This salt is used to deploy/derive TokenManagers for both Ethereum and TN
-    /// @dev ITS uses `interchainTokenId()` as the create3 salt used to deploy TokenManagers
-    function tokenManagerCreate3Salt() public view returns (bytes32) {
-        return interchainTokenId();
-    }
-
     /// @notice Returns the ITS TokenManager address for InterchainTEL, derived via create3
     /// @dev ITS uses `interchainTokenId()` as the create3 salt used to deploy TokenManagers
     function tokenManagerAddress() public view returns (address) {
@@ -108,7 +101,7 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            hex"ff", interchainTokenService(), tokenManagerCreate3Salt(), CREATE_DEPLOY_BYTECODE_HASH
+                            hex"ff", interchainTokenService(), interchainTokenId(), CREATE_DEPLOY_BYTECODE_HASH
                         )
                     )
                 )
