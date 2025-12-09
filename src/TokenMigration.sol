@@ -121,8 +121,8 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
             revert InvalidEndTime(_newTime);
         }
 
-        migrationEndTime = _newTime;
         emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
+        migrationEndTime = _newTime;
     }
 
     /**
