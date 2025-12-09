@@ -29,15 +29,15 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     /// @notice The total amount of TEL migrated via this contract,
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
-    /// @notice The timestamp after which the owner can withdraw unmigrated tokens
-    /// @notice This is for public availability (not security) and is owner-configurable
-    uint256 public migrationEndTime;
+    /// @notice The timestamp after which the owner can withdraw unmigrated tokens; can be extended
+    /// @notice Does not block migration on expiry; simply provides visibility of owner token-access
+    uint256 public ownerAccessTimestamp;
 
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event RemainingTokensWithdrawn(address indexed to, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
-    event MigrationEndTimeUpdated(uint256 oldTime, uint256 newTime);
+    event OwnerAccessTimestampUpdated(uint256 oldTime, uint256 newTime);
 
     // errors
     error InsufficientContractBalance(uint256 required, uint256 available);
@@ -61,7 +61,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         telcoinV3 = IERC20(_telcoinV3);
 
         // Set the initial end time based on deployment time + duration
-        migrationEndTime = block.timestamp + _migrationDuration;
+        ownerAccessTimestamp = block.timestamp + _migrationDuration;
     }
 
     /**
@@ -94,12 +94,12 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
 
     /**
      * @dev Withdraw remaining TelcoinV3 tokens (owner only)
-     * @notice Can only be called after migrationEndTime has passed
+     * @notice Can only be called after ownerAccessTimestamp has passed
      * @param to Address to send the tokens to
      */
     function withdrawRemainingTelcoinV3(address to) external onlyOwner {
-        if (block.timestamp < migrationEndTime) {
-            revert MigrationPeriodNotEnded(block.timestamp, migrationEndTime);
+        if (block.timestamp < ownerAccessTimestamp) {
+            revert MigrationPeriodNotEnded(block.timestamp, ownerAccessTimestamp);
         }
         if (to == address(0) || to == BURN_ADDRESS) revert ZeroAddress();
 
@@ -117,15 +117,15 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @notice This allows the owner to extend the migration window
      * @param _newTime The new absolute timestamp for the migration end
      */
-    function updateMigrationEndTime(uint256 _newTime) external onlyOwner {
-        if (_newTime <= migrationEndTime || _newTime > block.timestamp + MAX_EXTENSION_PERIOD) {
+    function updateOwnerAccessTimestamp(uint256 _newTime) external onlyOwner {
+        if (_newTime <= ownerAccessTimestamp || _newTime > block.timestamp + MAX_EXTENSION_PERIOD) {
             revert InvalidEndTime(_newTime);
         }
         uint256 bal = remainingTelcoinV3Balance();
         if (bal == 0) revert InsufficientContractBalance(1, bal);
 
-        emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
-        migrationEndTime = _newTime;
+        emit OwnerAccessTimestampUpdated(ownerAccessTimestamp, _newTime);
+        ownerAccessTimestamp = _newTime;
     }
 
     /**
