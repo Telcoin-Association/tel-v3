@@ -22,6 +22,8 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
 
     // Decimal difference multiplier (10^16)
     uint256 public constant DECIMAL_MULTIPLIER = 10 ** 16;
+    /// @notice The owner may extend the migration window by up to 2 years
+    uint256 public constant MAX_EXTENSION_PERIOD = 730 days;
 
     /// @notice The total amount of TEL migrated via this contract,
     /// denominated using TelcoinV3's 18 decimals
@@ -115,7 +117,9 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @param _newTime The new absolute timestamp for the migration end
      */
     function updateMigrationEndTime(uint256 _newTime) external onlyOwner {
-        if (_newTime <= migrationEndTime) revert InvalidEndTime(_newTime);
+        if (_newTime <= migrationEndTime || _newTime > block.timestamp + MAX_EXTENSION_PERIOD) {
+            revert InvalidEndTime(_newTime);
+        }
 
         migrationEndTime = _newTime;
         emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
