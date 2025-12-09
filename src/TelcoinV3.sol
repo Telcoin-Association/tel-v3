@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {InterchainTokenStandard} from "interchain-token-service/contracts/interchain-token/InterchainTokenStandard.sol";
@@ -12,7 +13,7 @@ import {Create3AddressFixed} from "interchain-token-service/contracts/utils/Crea
  * @title Telcoin
  * @notice Telcoin V3 featuring interchain support and 18 decimals
  */
-contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3AddressFixed, Pausable {
+contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable2Step, Create3AddressFixed, Pausable {
     error NotMinter(address addr);
 
     /// @notice Token factory flag to be create3-agnostic; see `InterchainTokenService::TOKEN_FACTORY_DEPLOYER`
