@@ -25,7 +25,6 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
     address private immutable _interchainTokenService;
 
     /// @dev Constants for deriving the origin chain's ITS custom linked deploy salt, token id, and TokenManager address
-    address private immutable originTEL;
     address private immutable originLinker;
     bytes32 private immutable originSalt;
     bytes32 private immutable originChainNameHash;
@@ -43,7 +42,6 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
      * @param initialSupply_ The initial supply to mint on this chain
      * @param owner_ The owner (Telcoin TAO Governance Safe)
      * @param migration_ The TokenMigration contract that receives `initialSupply_` for this chain
-     * @param originTEL_ The origin chain's TEL token address
      * @param originLinker_ The origin chain's ITS Linker contract address
      * @param originSalt_ The origin chain's ITS Linker salt used for custom linking
      * @param originChainName_ The origin chain's name
@@ -53,7 +51,6 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
         uint256 initialSupply_,
         address owner_,
         address migration_,
-        address originTEL_,
         address originLinker_,
         bytes32 originSalt_,
         string memory originChainName_,
@@ -61,7 +58,6 @@ contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable, Create3Ad
     ) ERC20("Telcoin", "TEL") Ownable(owner_) {
         require(initialSupply_ < TOTAL_SUPPLY, "Invalid mint amount");
 
-        originTEL = originTEL_;
         originLinker = originLinker_;
         originSalt = originSalt_;
         originChainNameHash = keccak256(bytes(originChainName_));

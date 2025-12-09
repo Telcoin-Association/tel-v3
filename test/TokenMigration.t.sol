@@ -68,7 +68,6 @@ contract TokenMigrationTest is Test {
                 INITIAL_NEW_TOKEN_SUPPLY,
                 owner,
                 expectedMigrationAddress,
-                OLDTOKEN_ADDRESS,
                 deployer,
                 originSalt,
                 originChainName,
@@ -162,7 +161,8 @@ contract TokenMigrationTest is Test {
         migration.migrate();
         vm.stopPrank();
 
-        // Owner withdraws remaining
+        // Owner withdraws remaining after 1 year
+        vm.warp(block.timestamp + 365 days + 1);
         uint256 remainingBalance = telcoinV3.balanceOf(address(migration));
 
         vm.prank(owner);

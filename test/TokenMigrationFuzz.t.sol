@@ -59,7 +59,6 @@ contract TokenMigrationFuzzTest is Test {
                 INITIAL_NEW_TOKEN_SUPPLY,
                 owner,
                 expectedMigrationAddress,
-                OLD_TOKEN_ADDRESS,
                 deployer,
                 originSalt,
                 originChainName,

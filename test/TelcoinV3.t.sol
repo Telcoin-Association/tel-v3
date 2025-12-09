@@ -25,7 +25,6 @@ contract TelcoinV3Test is Test {
             INITIAL_SUPPLY, // initialSupply_
             owner, // owner_
             makeAddr("migration"), // migration_
-            makeAddr("originTEL"), // originTEL_
             makeAddr("originLinker"), // originLinker_
             keccak256("salt"), // originSalt_
             "Ethereum", // originChainName_
