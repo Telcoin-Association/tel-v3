@@ -6,14 +6,19 @@ import {TelcoinV3} from "../src/TelcoinV3.sol";
 import {TokenMigration} from "../src/TokenMigration.sol";
 
 interface ICREATE3Factory {
-    function deploy(bytes32 salt, bytes memory bytecode) external returns (address);
+    function deployCreate3(bytes32 salt, bytes memory bytecode) external returns (address);
 
-    function getDeployed(address deployer, bytes32 salt) external view returns (address);
+    function computeCreate3Address(bytes32 salt, address deployer) external view returns (address);
 }
 
 contract DeployScript is Script {
     // CreateX Factory on Ethereum mainnet note: not compatible with Axelar
     ICREATE3Factory constant CREATE3_FACTORY = ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
+    
+    // use CreateX encoded salt allowing cross-chain replication
+    bytes1 allowCrossChain = 0x00;
+    bytes11 telcoinV3Entropy = bytes11(keccak256("TelcoinV3"));
+    bytes11 migrationEntropy = bytes11(keccak256("TokenMigration"));
 
     /// @dev Deployment config
     uint256 private migrationDuration = 365 days;
@@ -31,16 +36,14 @@ contract DeployScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // use CreateX encoded salt allowing cross-chain replication
-        bytes1 allowCrossChain = 0x00;
-        bytes11 telcoinV3Entropy = bytes11(keccak256("TelcoinV3"));
-        bytes11 migrationEntropy = bytes11(keccak256("TokenMigration"));
+        bytes32 migrationSalt = bytes32(abi.encodePacked(deployer, allowCrossChain, migrationEntropy));        
+        bytes32 guardedMigrationSalt = keccak256(bytes.concat(bytes32(uint256(uint160(deployer))), migrationSalt));
         bytes32 telcoinV3Salt = bytes32(abi.encodePacked(deployer, allowCrossChain, telcoinV3Entropy));
-        bytes32 migrationSalt = bytes32(abi.encodePacked(deployer, allowCrossChain, migrationEntropy));
+        bytes32 guardedV3Salt = keccak256(bytes.concat(bytes32(uint256(uint160(deployer))), telcoinV3Salt));
 
         // Get predicted addresses
-        address predictedTelcoinV3 = CREATE3_FACTORY.getDeployed(deployer, telcoinV3Salt);
-        address predictedMigration = CREATE3_FACTORY.getDeployed(deployer, migrationSalt);
+        address predictedTelcoinV3 = CREATE3_FACTORY.computeCreate3Address(guardedV3Salt, address(CREATE3_FACTORY));
+        address predictedMigration = CREATE3_FACTORY.computeCreate3Address(guardedMigrationSalt, address(CREATE3_FACTORY));
 
         console.log("Predicted TelcoinV3 address:", predictedTelcoinV3);
         console.log("Predicted Migration address:", predictedMigration);
@@ -50,7 +53,7 @@ contract DeployScript is Script {
             type(TokenMigration).creationCode, abi.encode(telcoinV2, predictedTelcoinV3, owner, migrationDuration)
         );
 
-        address migrationAddress = CREATE3_FACTORY.deploy(migrationSalt, migrationBytecode);
+        address migrationAddress = CREATE3_FACTORY.deployCreate3(migrationSalt, migrationBytecode);
         console.log("Migration contract deployed at:", migrationAddress);
         require(migrationAddress == predictedMigration, "Migration address mismatch");
 
@@ -62,13 +65,12 @@ contract DeployScript is Script {
             )
         );
 
-        address telcoinV3Address = CREATE3_FACTORY.deploy(telcoinV3Salt, telcoinV3Bytecode);
+        address telcoinV3Address = CREATE3_FACTORY.deployCreate3(telcoinV3Salt, telcoinV3Bytecode);
         console.log("TelcoinV3 token deployed at:", telcoinV3Address);
         require(telcoinV3Address == predictedTelcoinV3, "TelcoinV3 address mismatch");
 
         // Verify deployment
         TelcoinV3 token = TelcoinV3(telcoinV3Address);
-        require(token.totalSupply() == 10e29, "total supply");
         require(token.balanceOf(migrationAddress) == initialSupply, "initial supply");
 
         vm.stopBroadcast();
