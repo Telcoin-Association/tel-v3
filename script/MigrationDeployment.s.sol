@@ -15,6 +15,15 @@ contract DeployScript is Script {
     // CreateX Factory on Ethereum mainnet note: not compatible with Axelar
     ICREATE3Factory constant CREATE3_FACTORY = ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
+    /// @dev Deployment config
+    uint256 private migrationDuration = 365 days;
+    // Axelar ITS for Ethereum mainnet
+    address private interchainTokenService = 0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C;
+    // tn-contracts::Create3Utils::Salts.registerCustomTokenSalt
+    bytes32 private originSalt = keccak256("telcoin-v3");
+    // linking chain
+    string private originChainName = "Ethereum";
+
     function run(address telcoinV2, address owner, uint256 initialSupply) external {
         // Get private key from environment
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -37,16 +46,21 @@ contract DeployScript is Script {
         console.log("Predicted Migration address:", predictedMigration);
 
         // Deploy Migration contract first
-        bytes memory migrationBytecode =
-            abi.encodePacked(type(TokenMigration).creationCode, abi.encode(telcoinV2, predictedTelcoinV3, owner));
+        bytes memory migrationBytecode = abi.encodePacked(
+            type(TokenMigration).creationCode, abi.encode(telcoinV2, predictedTelcoinV3, owner, migrationDuration)
+        );
 
         address migrationAddress = CREATE3_FACTORY.deploy(migrationSalt, migrationBytecode);
         console.log("Migration contract deployed at:", migrationAddress);
         require(migrationAddress == predictedMigration, "Migration address mismatch");
 
         // Deploy TelcoinV3 token with migration contract as initial mint recipient
-        bytes memory telcoinV3Bytecode =
-            abi.encodePacked(type(TelcoinV3).creationCode, abi.encode(initialSupply, owner, migrationAddress));
+        bytes memory telcoinV3Bytecode = abi.encodePacked(
+            type(TelcoinV3).creationCode,
+            abi.encode(
+                initialSupply, owner, migrationAddress, deployer, originSalt, originChainName, interchainTokenService
+            )
+        );
 
         address telcoinV3Address = CREATE3_FACTORY.deploy(telcoinV3Salt, telcoinV3Bytecode);
         console.log("TelcoinV3 token deployed at:", telcoinV3Address);

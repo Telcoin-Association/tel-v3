@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -11,7 +12,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @title TokenMigration
  * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate
  */
-contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
+contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // TEL token addresses per chain
@@ -22,19 +23,21 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
 
     // Decimal difference multiplier (10^16)
     uint256 public constant DECIMAL_MULTIPLIER = 10 ** 16;
+    /// @notice The owner may extend the migration window by up to 2 years
+    uint256 public constant MAX_EXTENSION_PERIOD = 730 days;
 
     /// @notice The total amount of TEL migrated via this contract,
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
-    /// @notice The timestamp after which the owner can withdraw unmigrated tokens
-    /// @notice This is for public availability (not security) and is owner-configurable
-    uint256 public migrationEndTime;
+    /// @notice The timestamp after which the owner can withdraw unmigrated tokens; can be extended
+    /// @notice Does not block migration on expiry; simply provides visibility of owner token-access
+    uint256 public ownerAccessTimestamp;
 
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event RemainingTokensWithdrawn(address indexed to, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
-    event MigrationEndTimeUpdated(uint256 oldTime, uint256 newTime);
+    event OwnerAccessTimestampUpdated(uint256 oldTime, uint256 newTime);
 
     // errors
     error InsufficientContractBalance(uint256 required, uint256 available);
@@ -58,7 +61,7 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
         telcoinV3 = IERC20(_telcoinV3);
 
         // Set the initial end time based on deployment time + duration
-        migrationEndTime = block.timestamp + _migrationDuration;
+        ownerAccessTimestamp = block.timestamp + _migrationDuration;
     }
 
     /**
@@ -91,12 +94,12 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @dev Withdraw remaining TelcoinV3 tokens (owner only)
-     * @notice Can only be called after migrationEndTime has passed
+     * @notice Can only be called after ownerAccessTimestamp has passed
      * @param to Address to send the tokens to
      */
     function withdrawRemainingTelcoinV3(address to) external onlyOwner {
-        if (block.timestamp < migrationEndTime) {
-            revert MigrationPeriodNotEnded(block.timestamp, migrationEndTime);
+        if (block.timestamp < ownerAccessTimestamp) {
+            revert MigrationPeriodNotEnded(block.timestamp, ownerAccessTimestamp);
         }
         if (to == address(0) || to == BURN_ADDRESS) revert ZeroAddress();
 
@@ -114,11 +117,15 @@ contract TokenMigration is Ownable, Pausable, ReentrancyGuard {
      * @notice This allows the owner to extend the migration window
      * @param _newTime The new absolute timestamp for the migration end
      */
-    function updateMigrationEndTime(uint256 _newTime) external onlyOwner {
-        if (_newTime <= migrationEndTime) revert InvalidEndTime(_newTime);
+    function updateOwnerAccessTimestamp(uint256 _newTime) external onlyOwner {
+        if (_newTime <= ownerAccessTimestamp || _newTime > block.timestamp + MAX_EXTENSION_PERIOD) {
+            revert InvalidEndTime(_newTime);
+        }
+        uint256 bal = remainingTelcoinV3Balance();
+        if (bal == 0) revert InsufficientContractBalance(1, bal);
 
-        migrationEndTime = _newTime;
-        emit MigrationEndTimeUpdated(migrationEndTime, _newTime);
+        emit OwnerAccessTimestampUpdated(ownerAccessTimestamp, _newTime);
+        ownerAccessTimestamp = _newTime;
     }
 
     /**

@@ -4,6 +4,8 @@ pragma solidity ^0.8.26;
 import "forge-std/Test.sol";
 import {TelcoinV3} from "../src/TelcoinV3.sol";
 import {RolesConstants} from "interchain-token-service/contracts/utils/RolesConstants.sol";
+import {RolesBase} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/utils/RolesBase.sol";
+import {IRolesBase} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/interfaces/IRolesBase.sol";
 
 contract TelcoinV3Test is Test {
     TelcoinV3 internal token;
@@ -25,7 +27,6 @@ contract TelcoinV3Test is Test {
             INITIAL_SUPPLY, // initialSupply_
             owner, // owner_
             makeAddr("migration"), // migration_
-            makeAddr("originTEL"), // originTEL_
             makeAddr("originLinker"), // originLinker_
             keccak256("salt"), // originSalt_
             "Ethereum", // originChainName_
@@ -68,7 +69,9 @@ contract TelcoinV3Test is Test {
 
     function test_RevertIf_NonMinterMints() public {
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(NotMinter.selector, attacker));
+        vm.expectRevert(
+            abi.encodeWithSelector(IRolesBase.MissingRole.selector, attacker, uint8(RolesConstants.Roles.MINTER))
+        );
         token.mint(user, MINT_AMOUNT);
     }
 
@@ -89,7 +92,9 @@ contract TelcoinV3Test is Test {
         token.mint(user, MINT_AMOUNT);
 
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSelector(NotMinter.selector, attacker));
+        vm.expectRevert(
+            abi.encodeWithSelector(IRolesBase.MissingRole.selector, attacker, uint8(RolesConstants.Roles.MINTER))
+        );
         token.burn(user, MINT_AMOUNT);
     }
 
