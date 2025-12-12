@@ -14,7 +14,7 @@ interface ICREATE3Factory {
 contract DeployScript is Script {
     // CreateX Factory on Ethereum mainnet note: not compatible with Axelar
     ICREATE3Factory constant CREATE3_FACTORY = ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
-    
+
     // use CreateX encoded salt allowing cross-chain replication
     bytes1 allowCrossChain = 0x00;
     bytes11 telcoinV3Entropy = bytes11(keccak256("TelcoinV3"));
@@ -36,14 +36,15 @@ contract DeployScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        bytes32 migrationSalt = bytes32(abi.encodePacked(deployer, allowCrossChain, migrationEntropy));        
+        bytes32 migrationSalt = bytes32(abi.encodePacked(deployer, allowCrossChain, migrationEntropy));
         bytes32 guardedMigrationSalt = keccak256(bytes.concat(bytes32(uint256(uint160(deployer))), migrationSalt));
         bytes32 telcoinV3Salt = bytes32(abi.encodePacked(deployer, allowCrossChain, telcoinV3Entropy));
         bytes32 guardedV3Salt = keccak256(bytes.concat(bytes32(uint256(uint160(deployer))), telcoinV3Salt));
 
         // Get predicted addresses
         address predictedTelcoinV3 = CREATE3_FACTORY.computeCreate3Address(guardedV3Salt, address(CREATE3_FACTORY));
-        address predictedMigration = CREATE3_FACTORY.computeCreate3Address(guardedMigrationSalt, address(CREATE3_FACTORY));
+        address predictedMigration =
+            CREATE3_FACTORY.computeCreate3Address(guardedMigrationSalt, address(CREATE3_FACTORY));
 
         console.log("Predicted TelcoinV3 address:", predictedTelcoinV3);
         console.log("Predicted Migration address:", predictedMigration);
