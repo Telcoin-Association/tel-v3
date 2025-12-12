@@ -11,6 +11,7 @@ interface ICREATE3Factory {
     function computeCreate3Address(bytes32 salt, address deployer) external view returns (address);
 }
 
+/// @dev Usage: `forge script script/MigrationDeployment.s.sol --fork-url $RPC_URL -vvvv --private-key $PK -- $TEL $ADMIN 99000000000000000000000000000`
 contract DeployScript is Script {
     // CreateX Factory on Ethereum mainnet note: not compatible with Axelar
     ICREATE3Factory constant CREATE3_FACTORY = ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
