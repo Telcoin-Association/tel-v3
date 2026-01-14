@@ -26,11 +26,7 @@ contract TelcoinV3Test is Test {
         token = new TelcoinV3(
             INITIAL_SUPPLY, // initialSupply_
             owner, // owner_
-            makeAddr("migration"), // migration_
-            makeAddr("originLinker"), // originLinker_
-            keccak256("salt"), // originSalt_
-            "Ethereum", // originChainName_
-            makeAddr("its") // interchainTokenService_
+            makeAddr("migration") // migration_
         );
 
         vm.prank(owner);

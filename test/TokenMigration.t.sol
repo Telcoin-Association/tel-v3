@@ -23,9 +23,6 @@ contract TokenMigrationTest is Test {
     address public user2 = 0x7e75333333333333333333333333333333333300;
     address public owner = 0xF262D0995Da87FFF7a1d20635eA440Fac96CC5C1;
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
-    address private interchainTokenService = 0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C;
-    bytes32 private originSalt = keccak256("telcoin-v3"); // Create3Utils::Salts.registerCustomTokenSalt
-    string private originChainName = "Ethereum";
 
     // constants
     address constant OLDTOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F; // ethereum
@@ -63,16 +60,7 @@ contract TokenMigrationTest is Test {
         // deploy new token using create3 and mint to migration contract
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode,
-            abi.encode(
-                INITIAL_NEW_TOKEN_SUPPLY,
-                owner,
-                expectedMigrationAddress,
-                deployer,
-                originSalt,
-                originChainName,
-                interchainTokenService
-            )
+            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner, expectedMigrationAddress)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);

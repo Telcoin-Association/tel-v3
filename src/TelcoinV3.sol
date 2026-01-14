@@ -5,118 +5,37 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {InterchainTokenStandard} from "interchain-token-service/contracts/interchain-token/InterchainTokenStandard.sol";
 import {Minter} from "interchain-token-service/contracts/utils/Minter.sol";
-import {Create3AddressFixed} from "interchain-token-service/contracts/utils/Create3AddressFixed.sol";
 
 /**
  * @title Telcoin
- * @notice Telcoin V3 featuring interchain support and 18 decimals
+ * @notice Telcoin V3
  */
-contract TelcoinV3 is ERC20, InterchainTokenStandard, Minter, Ownable2Step, Create3AddressFixed, Pausable {
+contract TelcoinV3 is ERC20, Minter, Ownable2Step, Pausable {
     error NotMinter(address addr);
 
-    /// @notice Token factory flag to be create3-agnostic; see `InterchainTokenService::TOKEN_FACTORY_DEPLOYER`
-    address private constant TOKEN_FACTORY_DEPLOYER = address(0x0);
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 * 10 ** 18; // 100B tokens with 18 decimals
-
-    /// @dev The Axelar ITS TokenManager contract address for this token
-    address private immutable tokenManager;
-    /// @dev The Axelar ITS contract address for this contract's chain
-    address private immutable _interchainTokenService;
-
-    /// @dev Constants for deriving the origin chain's ITS custom linked deploy salt, token id, and TokenManager address
-    address private immutable originLinker;
-    bytes32 private immutable originSalt;
-    bytes32 private immutable originChainNameHash;
-    bytes32 private constant PREFIX_CUSTOM_TOKEN_SALT = keccak256("custom-token-salt");
-    bytes32 private constant PREFIX_INTERCHAIN_TOKEN_ID = keccak256("its-interchain-token-id");
 
     /**
      * @dev Constructor that mints amount specified to the migration contract
      * @param initialSupply_ The initial supply to mint on this chain
      * @param owner_ The owner (Telcoin TAO Governance Safe)
      * @param migration_ The TokenMigration contract that receives `initialSupply_` for this chain
-     * @param originLinker_ The origin chain's ITS Linker contract address
-     * @param originSalt_ The origin chain's ITS Linker salt used for custom linking
-     * @param originChainName_ The origin chain's name
-     * @param interchainTokenService_ The ITS contract address for this chain
      */
-    constructor(
-        uint256 initialSupply_,
-        address owner_,
-        address migration_,
-        address originLinker_,
-        bytes32 originSalt_,
-        string memory originChainName_,
-        address interchainTokenService_
-    ) ERC20("Telcoin", "TEL") Ownable(owner_) {
+    constructor(uint256 initialSupply_, address owner_, address migration_) ERC20("Telcoin", "TEL") Ownable(owner_) {
         require(initialSupply_ < MIGRATION_SUPPLY_CAP, "Invalid mint amount");
-
-        originLinker = originLinker_;
-        originSalt = originSalt_;
-        originChainNameHash = keccak256(bytes(originChainName_));
-        _interchainTokenService = interchainTokenService_;
-        tokenManager = tokenManagerAddress();
 
         _mint(migration_, initialSupply_);
         _addMinter(owner_);
-        _addMinter(tokenManagerAddress());
     }
 
-    /// @notice InterchainTEL implementation for ITS Token Manager's mint API
-    /// @dev Used by a Axelar TokenManager to manage interchain transfers
     /// @notice Can be used for future supply inflation in line with long term Telcoin roadmap
     function mint(address to, uint256 amount) external onlyRole(uint8(Roles.MINTER)) whenNotPaused {
         _mint(to, amount);
     }
 
-    /// @notice TelcoinV3 implementation for ITS Token Manager's burn API
     function burn(address from, uint256 amount) external onlyRole(uint8(Roles.MINTER)) whenNotPaused {
         _burn(from, amount);
-    }
-
-    /// @notice Returns the top-level ITS interchain token ID for InterchainTEL
-    /// @dev The interchain token ID is *custom-linked*, ie based on Ethereum ERC20 TEL, and shared across chains
-    function interchainTokenId() public view override returns (bytes32) {
-        return keccak256(abi.encode(PREFIX_INTERCHAIN_TOKEN_ID, TOKEN_FACTORY_DEPLOYER, linkedTokenDeploySalt()));
-    }
-
-    /// @notice Returns the unique salt required for InterchainTEL ITS integration
-    /// @dev Equivalent to `InterchainTokenFactory::linkedTokenDeploySalt()`
-    function linkedTokenDeploySalt() public view returns (bytes32) {
-        return keccak256(abi.encode(PREFIX_CUSTOM_TOKEN_SALT, originChainNameHash, originLinker, originSalt));
-    }
-
-    /// @notice Returns the ITS TokenManager address for InterchainTEL, derived via create3
-    /// @dev ITS uses `interchainTokenId()` as the create3 salt used to deploy TokenManagers
-    function tokenManagerAddress() public view returns (address) {
-        address createDeploy = address(
-            uint160(
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            hex"ff", interchainTokenService(), interchainTokenId(), CREATE_DEPLOY_BYTECODE_HASH
-                        )
-                    )
-                )
-            )
-        );
-
-        return address(uint160(uint256(keccak256(abi.encodePacked(hex"d694", createDeploy, hex"01")))));
-    }
-
-    /// @inheritdoc InterchainTokenStandard
-    function interchainTokenService() public view override returns (address) {
-        return _interchainTokenService;
-    }
-
-    /// @dev Required by InterchainTokenStandard
-    function _spendAllowance(address sender, address spender, uint256 amount)
-        internal
-        override(ERC20, InterchainTokenStandard)
-    {
-        ERC20._spendAllowance(sender, spender, amount);
     }
 
     /**
