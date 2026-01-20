@@ -13,7 +13,7 @@ interface ICREATE3Factory {
 
 /// @dev Usage: `forge script script/MigrationDeployment.s.sol --fork-url $RPC_URL -vvvv --private-key $PK -- $TEL $ADMIN 99000000000000000000000000000`
 contract DeployScript is Script {
-    // CreateX Factory on Ethereum mainnet note: not compatible with Axelar
+    // CreateX Factory on Ethereum mainnet
     ICREATE3Factory constant CREATE3_FACTORY = ICREATE3Factory(0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed);
 
     // use CreateX encoded salt allowing cross-chain replication
@@ -23,12 +23,6 @@ contract DeployScript is Script {
 
     /// @dev Deployment config
     uint256 private migrationDuration = 365 days;
-    // Axelar ITS for Ethereum mainnet
-    address private interchainTokenService = 0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C;
-    // tn-contracts::Create3Utils::Salts.registerCustomTokenSalt
-    bytes32 private originSalt = keccak256("telcoin-v3");
-    // linking chain
-    string private originChainName = "Ethereum";
 
     function run(address telcoinV2, address owner, uint256 initialSupply) external {
         // Get private key from environment
@@ -60,12 +54,8 @@ contract DeployScript is Script {
         require(migrationAddress == predictedMigration, "Migration address mismatch");
 
         // Deploy TelcoinV3 token with migration contract as initial mint recipient
-        bytes memory telcoinV3Bytecode = abi.encodePacked(
-            type(TelcoinV3).creationCode,
-            abi.encode(
-                initialSupply, owner, migrationAddress, deployer, originSalt, originChainName, interchainTokenService
-            )
-        );
+        bytes memory telcoinV3Bytecode =
+            abi.encodePacked(type(TelcoinV3).creationCode, abi.encode(initialSupply, owner, migrationAddress));
 
         address telcoinV3Address = CREATE3_FACTORY.deployCreate3(telcoinV3Salt, telcoinV3Bytecode);
         console.log("TelcoinV3 token deployed at:", telcoinV3Address);

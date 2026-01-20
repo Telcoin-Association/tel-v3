@@ -18,9 +18,6 @@ contract TokenMigrationFuzzTest is Test {
     // addresses
     address public owner = 0xF262D0995Da87FFF7a1d20635eA440Fac96CC5C1;
     address public deployer = 0x369921b758B1228882EFbd997a67075211b93835;
-    address private interchainTokenService = 0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C;
-    bytes32 private originSalt = keccak256("telcoin-v3"); // Create3Utils::Salts.registerCustomTokenSalt
-    string private originChainName = "Ethereum";
 
     // constants
     address constant OLD_TOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
@@ -54,16 +51,7 @@ contract TokenMigrationFuzzTest is Test {
         // deploy new token using create3
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode,
-            abi.encode(
-                INITIAL_NEW_TOKEN_SUPPLY,
-                owner,
-                expectedMigrationAddress,
-                deployer,
-                originSalt,
-                originChainName,
-                interchainTokenService
-            )
+            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner, expectedMigrationAddress)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
@@ -240,6 +228,7 @@ contract TokenMigrationFuzzTest is Test {
         vm.prank(owner);
 
         // First withdraw all tokens
+        vm.warp(block.timestamp + 365 days);
         migration.withdrawRemainingTelcoinV3(owner);
 
         // Then send back exactly what's needed
@@ -269,6 +258,7 @@ contract TokenMigrationFuzzTest is Test {
         uint256 requiredTelcoinV3s = amount * migration.DECIMAL_MULTIPLIER();
 
         // Set migration contract to be 1 wei short
+        vm.warp(block.timestamp + 365 days);
         vm.startPrank(owner);
         migration.withdrawRemainingTelcoinV3(owner);
         require(telcoinV3.transfer(address(migration), requiredTelcoinV3s - 1));
