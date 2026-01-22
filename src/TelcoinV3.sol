@@ -9,6 +9,7 @@ import {Minter} from "interchain-token-service/contracts/utils/Minter.sol";
 
 /**
  * @title Telcoin
+ * @author Telcoin Labs
  * @notice Telcoin V3
  */
 contract TelcoinV3 is ERC20, Minter, Ownable2Step, Pausable {
@@ -38,11 +39,9 @@ contract TelcoinV3 is ERC20, Minter, Ownable2Step, Pausable {
         _burn(from, amount);
     }
 
-    /**
-     *
-     *   permissioned
-     *
-     */
+    // ------------
+    // Permissioned
+    // ------------
 
     /// @dev Minters can propose and transfer mintership roles; owner can remove minters
     function removeMinter(address minter) public onlyOwner {

@@ -10,6 +10,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 /**
  * @title TokenMigration
+ * @author Telcoin Labs
  * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate
  */
 contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
