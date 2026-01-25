@@ -22,6 +22,7 @@ contract TelcoinV3 is ERC20, Ownable2Step, Pausable {
 
     error NotBridge();
     error ZeroAddress();
+    error InvalidMintAmount();
 
     /// @notice Verifies msg.sender to be the `bridge` address.
     modifier onlyBridge() {
@@ -36,8 +37,7 @@ contract TelcoinV3 is ERC20, Ownable2Step, Pausable {
      * @param migration_ The TokenMigration contract that receives `initialSupply_` for this chain
      */
     constructor(uint256 initialSupply_, address owner_, address migration_) ERC20("Telcoin", "TEL") Ownable(owner_) {
-        require(initialSupply_ < MIGRATION_SUPPLY_CAP, "Invalid mint amount");
-
+        if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert InvalidMintAmount();
         _mint(migration_, initialSupply_);
     }
 

@@ -1,0 +1,14 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "quotes": "off",
+    "func-name-mixedcase": "off",
+    "use-natspec": "off",
+    "function-max-lines": "off",
+    "gas-small-strings": "off",
+    "gas-indexed-events": "off",
+    "no-global-import": "off",
+    "import-path-check": "off",
+    "state-visibility": "off"
+  }
+}

@@ -18,3 +18,4 @@ shrink_run_limit = 5000      # Shrinking for invariant tests
 
 [lint]
 lint_on_build = false
+ignore = ["quotes"]
