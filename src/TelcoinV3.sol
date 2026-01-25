@@ -5,17 +5,29 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {Minter} from "interchain-token-service/contracts/utils/Minter.sol";
 
 /**
  * @title Telcoin
  * @author Telcoin Labs
  * @notice Telcoin V3
  */
-contract TelcoinV3 is ERC20, Minter, Ownable2Step, Pausable {
-    error NotMinter(address addr);
+contract TelcoinV3 is ERC20, Ownable2Step, Pausable {
+    uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
 
-    uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 * 10 ** 18; // 100B tokens with 18 decimals
+    /// @notice The bridge contract authorized to mint/burn
+    address public bridge;
+
+    /// @notice Emitted when the bridge address is updated
+    event BridgeSet(address indexed bridge);
+
+    error NotBridge();
+    error ZeroAddress();
+
+    /// @notice Verifies msg.sender to be the `bridge` address.
+    modifier onlyBridge() {
+        if (msg.sender != bridge) revert NotBridge();
+        _;
+    }
 
     /**
      * @dev Constructor that mints amount specified to the migration contract
@@ -27,15 +39,15 @@ contract TelcoinV3 is ERC20, Minter, Ownable2Step, Pausable {
         require(initialSupply_ < MIGRATION_SUPPLY_CAP, "Invalid mint amount");
 
         _mint(migration_, initialSupply_);
-        _addMinter(owner_);
     }
 
-    /// @notice Can be used for future supply inflation in line with long term Telcoin roadmap
-    function mint(address to, uint256 amount) external onlyRole(uint8(Roles.MINTER)) whenNotPaused {
+    /// @notice Mint tokens - only callable by the bridge
+    function mint(address to, uint256 amount) external onlyBridge whenNotPaused {
         _mint(to, amount);
     }
 
-    function burn(address from, uint256 amount) external onlyRole(uint8(Roles.MINTER)) whenNotPaused {
+    /// @notice Burn tokens - only callable by the bridge
+    function burn(address from, uint256 amount) external onlyBridge whenNotPaused {
         _burn(from, amount);
     }
 
@@ -43,16 +55,20 @@ contract TelcoinV3 is ERC20, Minter, Ownable2Step, Pausable {
     // Permissioned
     // ------------
 
-    /// @dev Minters can propose and transfer mintership roles; owner can remove minters
-    function removeMinter(address minter) public onlyOwner {
-        if (!hasRole(minter, uint8(Roles.MINTER))) revert NotMinter(minter);
-        _removeRole(minter, uint8(Roles.MINTER));
+    /// @notice Set the bridge address
+    /// @param _bridge The new bridge address
+    function setBridge(address _bridge) external onlyOwner {
+        if (_bridge == address(0)) revert ZeroAddress();
+        bridge = _bridge;
+        emit BridgeSet(_bridge);
     }
 
+    /// @notice Pauses minting and burning functionality from this contract.
     function pause() public onlyOwner {
         _pause();
     }
 
+    /// @notice Unpauses minting and burning functionality from this contract.
     function unpause() public onlyOwner {
         _unpause();
     }

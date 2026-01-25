@@ -4,7 +4,10 @@ pragma solidity ^0.8.30;
 import {OApp, Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
+import {ITelcoinBridge} from "./interfaces/ITelcoinBridge.sol";
 
 /**
  * @title TelcoinBridge
@@ -12,7 +15,8 @@ import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
  * @notice LayerZero V2 bridge for TelcoinV3 cross-chain transfers
  * @dev Burns tokens on source chain, mints on destination chain
  */
-contract TelcoinBridge is OApp, Pausable {
+contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
+    using SafeERC20 for IERC20;
 
     // ~ Constants ~
 
@@ -26,33 +30,6 @@ contract TelcoinBridge is OApp, Pausable {
 
     /// @notice Gas limit for lzReceive execution on destination chain
     uint128 public dstGasLimit;
-
-    // ~ Events ~
-
-    /// @notice Emitted when tokens are bridged to another chain
-    event BridgeSent(
-        bytes32 indexed guid,
-        uint32 indexed dstEid,
-        address indexed from,
-        address to,
-        uint256 amount
-    );
-
-    /// @notice Emitted when tokens are received from another chain
-    event BridgeReceived(
-        bytes32 indexed guid,
-        uint32 indexed srcEid,
-        address indexed to,
-        uint256 amount
-    );
-
-    /// @notice Emitted when destination gas limit is updated
-    event DstGasLimitSet(uint128 dstGasLimit);
-
-    // ~ Errors ~
-
-    error ZeroAmount();
-    error ZeroAddress();
 
     // ~ Constructor ~
 
@@ -158,6 +135,18 @@ contract TelcoinBridge is OApp, Pausable {
     function setDstGasLimit(uint128 _dstGasLimit) external onlyOwner {
         dstGasLimit = _dstGasLimit;
         emit DstGasLimitSet(_dstGasLimit);
+    }
+
+    /**
+     * @notice Rescue ERC20 tokens accidentally sent to this contract
+     * @param _token The token address to rescue
+     * @param _amount The amount to rescue
+     */
+    function rescueTokens(address _token, uint256 _amount) external onlyOwner {
+        if (_amount == 0) revert ZeroAmount();
+        if (_token == address(0)) revert ZeroAddress();
+
+        IERC20(_token).safeTransfer(msg.sender, _amount);
     }
 
     /**

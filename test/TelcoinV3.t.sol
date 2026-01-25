@@ -3,23 +3,17 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {TelcoinV3} from "../src/TelcoinV3.sol";
-import {RolesConstants} from "interchain-token-service/contracts/utils/RolesConstants.sol";
-import {RolesBase} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/utils/RolesBase.sol";
-import {IRolesBase} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/interfaces/IRolesBase.sol";
 
 contract TelcoinV3Test is Test {
     TelcoinV3 internal token;
 
     address internal owner = makeAddr("owner");
-    address internal minterAddr = makeAddr("minter");
+    address internal bridge = makeAddr("bridge");
     address internal user = makeAddr("user");
     address internal attacker = makeAddr("attacker");
 
     uint256 internal constant INITIAL_SUPPLY = 10_000_000_000 ether;
     uint256 internal constant MINT_AMOUNT = 500 ether;
-
-    // Define custom errors defined in TelcoinV3 for expectRevert
-    error NotMinter(address addr);
 
     function setUp() public {
         vm.prank(owner);
@@ -30,68 +24,73 @@ contract TelcoinV3Test is Test {
         );
 
         vm.prank(owner);
-        token.transferMintership(minterAddr);
+        token.setBridge(bridge);
     }
 
-    function test_OwnerCanRemoveMinter() public {
-        assertTrue(token.hasRole(minterAddr, uint8(RolesConstants.Roles.MINTER)));
-
-        vm.prank(owner);
-        token.removeMinter(minterAddr);
-
-        assertFalse(token.hasRole(minterAddr, uint8(RolesConstants.Roles.MINTER)));
-    }
-
-    function test_RevertIf_NonOwnerRemovesMinter() public {
-        vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", attacker));
-        token.removeMinter(minterAddr);
-    }
-
-    function test_RevertIf_RemovingNonMinter() public {
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(NotMinter.selector, attacker));
-        token.removeMinter(attacker);
-    }
-
-    function test_MinterCanMint() public {
+    function test_BridgeCanMint() public {
         uint256 preBalance = token.balanceOf(user);
 
-        vm.prank(minterAddr);
+        vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
 
         assertEq(token.balanceOf(user), preBalance + MINT_AMOUNT);
     }
 
-    function test_RevertIf_NonMinterMints() public {
+    function test_RevertIf_NonBridgeMints() public {
         vm.prank(attacker);
-        vm.expectRevert(
-            abi.encodeWithSelector(IRolesBase.MissingRole.selector, attacker, uint8(RolesConstants.Roles.MINTER))
-        );
+        vm.expectRevert(TelcoinV3.NotBridge.selector);
         token.mint(user, MINT_AMOUNT);
     }
 
-    function test_MinterCanBurn() public {
-        vm.prank(minterAddr);
+    function test_BridgeCanBurn() public {
+        vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
 
         uint256 preBalance = token.balanceOf(user);
 
-        vm.prank(minterAddr);
+        vm.prank(bridge);
         token.burn(user, MINT_AMOUNT);
 
         assertEq(token.balanceOf(user), preBalance - MINT_AMOUNT);
     }
 
-    function test_RevertIf_NonMinterBurns() public {
-        vm.prank(minterAddr);
+    function test_RevertIf_NonBridgeBurns() public {
+        vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
 
         vm.prank(attacker);
-        vm.expectRevert(
-            abi.encodeWithSelector(IRolesBase.MissingRole.selector, attacker, uint8(RolesConstants.Roles.MINTER))
-        );
+        vm.expectRevert(TelcoinV3.NotBridge.selector);
         token.burn(user, MINT_AMOUNT);
+    }
+
+    function test_OwnerCanSetBridge() public {
+        address newBridge = makeAddr("newBridge");
+
+        vm.prank(owner);
+        token.setBridge(newBridge);
+
+        assertEq(token.bridge(), newBridge);
+    }
+
+    function test_RevertIf_NonOwnerSetsBridge() public {
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", attacker));
+        token.setBridge(attacker);
+    }
+
+    function test_RevertIf_SetBridgeToZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(TelcoinV3.ZeroAddress.selector);
+        token.setBridge(address(0));
+    }
+
+    function test_SetBridge_EmitsEvent() public {
+        address newBridge = makeAddr("newBridge");
+
+        vm.prank(owner);
+        vm.expectEmit(true, true, true, true);
+        emit TelcoinV3.BridgeSet(newBridge);
+        token.setBridge(newBridge);
     }
 
     function test_OwnerCanPauseAndUnpause() public {
@@ -116,21 +115,19 @@ contract TelcoinV3Test is Test {
         vm.prank(owner);
         token.pause();
 
-        // Even an authorized minter cannot mint while paused
-        vm.prank(minterAddr);
+        vm.prank(bridge);
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         token.mint(user, MINT_AMOUNT);
     }
 
     function test_RevertIf_BurningWhilePaused() public {
-        vm.prank(minterAddr);
+        vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
 
         vm.prank(owner);
         token.pause();
 
-        // Even an authorized minter cannot burn while paused
-        vm.prank(minterAddr);
+        vm.prank(bridge);
         vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         token.burn(user, MINT_AMOUNT);
     }
