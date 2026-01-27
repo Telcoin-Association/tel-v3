@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {ITelcoinBridge} from "../../src/interfaces/ITelcoinBridge.sol";
 
@@ -25,6 +26,16 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(address(bridgeA.telcoin()), address(telcoinA));
         assertEq(bridgeA.owner(), owner);
         assertEq(bridgeA.dstGasLimit(), 200_000);
+    }
+  
+    /// @dev Verifies initialization fails when _telcoin == address(0).
+    function test_Constructor_RevertsWhenTelcoinIsAddress0() public {
+        vm.expectRevert(ITelcoinBridge.ZeroAddress.selector);
+        new TelcoinBridge(
+            address(0),
+            address(endpointA),
+            owner
+        );
     }
 
     // ----------------
@@ -231,5 +242,85 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.prank(owner);
         vm.expectRevert(ITelcoinBridge.ZeroAddress.selector);
         bridgeA.rescueTokens(address(0), 100);
-    } 
+    }
+
+    // ---------------------
+    // Interchangable Bridge
+    // ---------------------
+
+    /// @dev Verifies the interchangeable "plug and play" architecture of the TelcoinV3 + TelcoinBridge contracts.
+    /// Disconnects the old bridge contract, deploys and connects a new bridge contract, and verifies usage.
+    function test_BridgeIsInterchangeable() public {
+        uint256 bridgeAmount = 1000 ether;
+        bytes memory options = _createBasicOptions();
+
+        uint256 preBalUser1 = telcoinA.balanceOf(user1);
+        uint256 preSupply = telcoinA.totalSupply();
+
+        // STEP 1: Perform a successful bridge with the original bridgeA
+        vm.startPrank(user1);
+        MessagingFee memory fee = bridgeA.quote(EID_B, user1, bridgeAmount, options);
+        bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, bridgeAmount, options);
+        vm.stopPrank();
+
+        // Verify tokens were burned
+        assertEq(telcoinA.balanceOf(user1), preBalUser1 - bridgeAmount);
+        assertEq(telcoinA.totalSupply(), preSupply - bridgeAmount);
+
+        // STEP 2: Deploy a new bridge contract (simulating an upgrade or provider switch)
+        vm.startPrank(owner);
+        TelcoinBridge newBridgeA = new TelcoinBridge(
+            address(telcoinA),
+            address(endpointA),
+            owner
+        );
+
+        // STEP 3: Revoke old bridge and grant new bridge mint/burn roles
+        telcoinA.setBridge(address(newBridgeA));
+
+        // Setup peer for the new bridge
+        newBridgeA.setPeer(EID_B, _addressToBytes32(address(bridgeB)));
+
+        // Update bridgeB to recognize the new bridgeA as a peer
+        bridgeB.setPeer(EID_A, _addressToBytes32(address(newBridgeA)));
+        vm.stopPrank();
+
+        // STEP 4: Verify old bridge can NO LONGER bridge (reverts with NotBridge)
+        vm.startPrank(user1);
+        fee = bridgeA.quote(EID_B, user1, bridgeAmount, options);
+        vm.expectRevert(TelcoinV3.NotBridge.selector);
+        bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, bridgeAmount, options);
+        vm.stopPrank();
+
+        preBalUser1 = telcoinA.balanceOf(user1);
+        preSupply = telcoinA.totalSupply();
+
+        // STEP 5: Verify NEW bridge CAN bridge successfully
+        vm.startPrank(user1);
+        fee = newBridgeA.quote(EID_B, user1, bridgeAmount, options);
+        MessagingReceipt memory receipt = newBridgeA.bridge{value: fee.nativeFee}(
+            EID_B,
+            user1,
+            bridgeAmount,
+            options
+        );
+        vm.stopPrank();
+
+        // Verify tokens were burned via the new bridge
+        assertEq(telcoinA.balanceOf(user1), preBalUser1 - bridgeAmount);
+        assertEq(telcoinA.totalSupply(), preSupply - bridgeAmount);
+
+        // STEP 6: Verify receiving still works on chain B from the new bridge
+        endpointB.deliverPacket(
+            EID_A,
+            _addressToBytes32(address(newBridgeA)),
+            1,
+            receipt.guid,
+            abi.encode(user1, bridgeAmount),
+            address(bridgeB)
+        );
+
+        // Verify mint on chain B
+        assertEq(telcoinB.balanceOf(user1), bridgeAmount);
+    }
 }
