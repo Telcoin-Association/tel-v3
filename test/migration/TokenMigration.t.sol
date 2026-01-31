@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TokenMigration} from "../../src/TokenMigration.sol";
-import {Create3Utils} from "../../deployments/Create3Utils.sol";
+import {Create3Utils} from "../utils/Create3Utils.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";

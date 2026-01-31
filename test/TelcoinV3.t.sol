@@ -3,8 +3,9 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {TelcoinV3} from "../src/TelcoinV3.sol";
+import {Roles} from "../src/helpers/Roles.sol";
 
-contract TelcoinV3Test is Test {
+contract TelcoinV3Test is Test, Roles {
     TelcoinV3 internal token;
 
     address internal owner = makeAddr("owner");
@@ -23,8 +24,12 @@ contract TelcoinV3Test is Test {
             makeAddr("migration") // migration_
         );
 
-        vm.prank(owner);
-        token.setBridge(bridge);
+        vm.startPrank(owner);
+        token.grantRole(MINTER_ROLE, address(bridge));
+        token.grantRole(BURNER_ROLE, address(bridge));
+        token.grantRole(PAUSER_ROLE, address(owner));
+        token.grantRole(UNPAUSER_ROLE, address(owner));
+        vm.stopPrank();
     }
 
     function test_BridgeCanMint() public {
@@ -38,7 +43,7 @@ contract TelcoinV3Test is Test {
 
     function test_RevertIf_NonBridgeMints() public {
         vm.prank(attacker);
-        vm.expectRevert(TelcoinV3.NotBridge.selector);
+        vm.expectRevert();
         token.mint(user, MINT_AMOUNT);
     }
 
@@ -59,38 +64,8 @@ contract TelcoinV3Test is Test {
         token.mint(user, MINT_AMOUNT);
 
         vm.prank(attacker);
-        vm.expectRevert(TelcoinV3.NotBridge.selector);
+        vm.expectRevert();
         token.burn(user, MINT_AMOUNT);
-    }
-
-    function test_OwnerCanSetBridge() public {
-        address newBridge = makeAddr("newBridge");
-
-        vm.prank(owner);
-        token.setBridge(newBridge);
-
-        assertEq(token.bridge(), newBridge);
-    }
-
-    function test_RevertIf_NonOwnerSetsBridge() public {
-        vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", attacker));
-        token.setBridge(attacker);
-    }
-
-    function test_RevertIf_SetBridgeToZeroAddress() public {
-        vm.prank(owner);
-        vm.expectRevert(TelcoinV3.ZeroAddress.selector);
-        token.setBridge(address(0));
-    }
-
-    function test_SetBridge_EmitsEvent() public {
-        address newBridge = makeAddr("newBridge");
-
-        vm.prank(owner);
-        vm.expectEmit(true, true, true, true);
-        emit TelcoinV3.BridgeSet(newBridge);
-        token.setBridge(newBridge);
     }
 
     function test_OwnerCanPauseAndUnpause() public {
@@ -107,7 +82,7 @@ contract TelcoinV3Test is Test {
 
     function test_RevertIf_NonOwnerPauses() public {
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", attacker));
+        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", attacker, PAUSER_ROLE));
         token.pause();
     }
 

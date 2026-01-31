@@ -110,8 +110,11 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
         );
 
         // Set bridgeNoPeer as the bridge so it can burn
-        vm.prank(owner);
-        telcoinA.setBridge(address(bridgeNoPeer));
+        vm.startPrank(owner);
+        //telcoinA.setBridge(address(bridgeNoPeer));
+        telcoinA.grantRole(MINTER_ROLE, address(bridgeNoPeer));
+        telcoinA.grantRole(BURNER_ROLE, address(bridgeNoPeer));
+        vm.stopPrank();
 
         bytes memory options = _createBasicOptions();
 

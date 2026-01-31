@@ -10,3 +10,8 @@ docs/
 
 # Dotenv file
 .env
+
+# Misc
+lcov.info
+TODO.txt
+out.md

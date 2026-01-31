@@ -5,12 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {MockEndpoint} from "../mocks/MockEndpoint.sol";
+import {Roles} from "../../src/helpers/Roles.sol";
 
 /**
  * @title BaseSetup
  * @notice This serves as the base file for the TelcoinBridge tests
  */
-contract BaseSetup is Test {
+contract BaseSetup is Test, Roles {
     // Contracts
     TelcoinV3 public telcoinA;
     TelcoinV3 public telcoinB;
@@ -74,8 +75,12 @@ contract BaseSetup is Test {
         bridgeB.setPeer(EID_A, _addressToBytes32(address(bridgeA)));
 
         // Set bridges on their respective TelcoinV3
-        telcoinA.setBridge(address(bridgeA));
-        telcoinB.setBridge(address(bridgeB));
+        //telcoinA.setBridge(address(bridgeA));
+        telcoinA.grantRole(MINTER_ROLE, address(bridgeA));
+        telcoinA.grantRole(BURNER_ROLE, address(bridgeA));
+        // telcoinB.setBridge(address(bridgeB));
+        telcoinB.grantRole(MINTER_ROLE, address(bridgeB));
+        telcoinB.grantRole(BURNER_ROLE, address(bridgeB));
 
         // Fund users with tokens on chain A
         telcoinA.transfer(user1, USER_BALANCE);

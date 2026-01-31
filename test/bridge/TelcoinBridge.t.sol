@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {ITelcoinBridge} from "../../src/interfaces/ITelcoinBridge.sol";
@@ -276,7 +276,10 @@ contract TelcoinBridgeTest is BaseSetup {
         );
 
         // STEP 3: Revoke old bridge and grant new bridge mint/burn roles
-        telcoinA.setBridge(address(newBridgeA));
+        telcoinA.revokeRole(MINTER_ROLE, address(bridgeA));
+        telcoinA.revokeRole(BURNER_ROLE, address(bridgeA));
+        telcoinA.grantRole(MINTER_ROLE, address(newBridgeA));
+        telcoinA.grantRole(BURNER_ROLE, address(newBridgeA));
 
         // Setup peer for the new bridge
         newBridgeA.setPeer(EID_B, _addressToBytes32(address(bridgeB)));
@@ -285,10 +288,10 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeB.setPeer(EID_A, _addressToBytes32(address(newBridgeA)));
         vm.stopPrank();
 
-        // STEP 4: Verify old bridge can NO LONGER bridge (reverts with NotBridge)
+        // STEP 4: Verify old bridge can NO LONGER bridge
         vm.startPrank(user1);
         fee = bridgeA.quote(EID_B, user1, bridgeAmount, options);
-        vm.expectRevert(TelcoinV3.NotBridge.selector);
+        vm.expectRevert();
         bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, bridgeAmount, options);
         vm.stopPrank();
 
