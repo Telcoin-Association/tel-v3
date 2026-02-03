@@ -45,9 +45,11 @@ abstract contract DeployUtility is Script {
 
     /**
      * @notice Compute the CREATE3 deployment address by calling CreateX on-chain
+     * @param guardedSalt The guarded salt (with deployer address in first 20 bytes)
+     * @param deployer The address that will call CreateX (msg.sender during deployment)
      */
-    function _computeCreate3Address(bytes32 guardedSalt) internal pure returns (address) {
-        bytes32 transformedSalt = SaltMath.getCreateXGuardedSalt(guardedSalt, CREATEX);
+    function _computeCreate3Address(bytes32 guardedSalt, address deployer) internal view returns (address) {
+        bytes32 transformedSalt = SaltMath.getCreateXGuardedSalt(guardedSalt, deployer);
         return ICreateX(CREATEX).computeCreate3Address(transformedSalt, CREATEX);
     }
 
@@ -94,7 +96,7 @@ abstract contract DeployUtility is Script {
         require(SaltMath.extractGuard(guardedSalt) == deployer, "guarded salt incorrect");
 
         // Pre-calculate Create3 deployment address
-        address expectedAddress = _computeCreate3Address(guardedSalt);
+        address expectedAddress = _computeCreate3Address(guardedSalt, deployer);
         if (_isDeployed(expectedAddress)) return (expectedAddress, false);
 
         // Call CreateX on-chain
