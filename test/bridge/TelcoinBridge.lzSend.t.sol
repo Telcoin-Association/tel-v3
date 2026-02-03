@@ -9,10 +9,10 @@ import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {ITelcoinBridge} from "../../src/interfaces/ITelcoinBridge.sol";
 
 /**
- * @title TelcoinBridgeBridgeTest
+ * @title TelcoinBridgeLzSendTest
  * @notice This test file is meant to verify the basic functions of the TelcoinBridge::bridge function.
  */
-contract TelcoinBridgeBridgeTest is BaseSetup {
+contract TelcoinBridgeLzSendTest is BaseSetup {
     function setUp() public override {
         super.setUp();
     }
@@ -22,7 +22,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
     // ------------
 
     /// @dev Verifies successful call to TelcoinBridge::bridge with no expectation of txn landing.
-    function test_Bridge_Success() public {
+    function test_LzSend_Success() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
         uint256 preSupply = telcoinA.totalSupply();
@@ -52,7 +52,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
     }
 
     /// @dev Verifies a successful call to bridge emits the intended `BridgeSent` event.
-    function test_Bridge_EmitsEvent() public {
+    function test_LzSend_EmitsEvent() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
 
@@ -68,7 +68,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
     }
 
     /// @dev Verifies if amount == 0, contract reverts with the `ZeroAmount` error.
-    function test_Bridge_RevertZeroAmount() public {
+    function test_LzSend_RevertZeroAmount() public {
         bytes memory options = _createBasicOptions();
 
         vm.startPrank(user1);
@@ -78,7 +78,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
     }
 
     /// @dev Verifies if recipient == address(0), contract reverts with the `ZeroAddress` error.
-    function test_Bridge_RevertZeroRecipient() public {
+    function test_LzSend_RevertZeroRecipient() public {
         bytes memory options = _createBasicOptions();
 
         vm.startPrank(user1);
@@ -88,7 +88,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
     }
 
     /// @dev Verifies if contract is paused, a call to bridge will revert.
-    function test_Bridge_RevertWhenPaused() public {
+    function test_LzSend_RevertWhenPaused() public {
         bytes memory options = _createBasicOptions();
 
         vm.prank(owner);
@@ -101,7 +101,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
     }
 
     /// @dev Verifies if contract is bridged to a chain with no peer, contract reverts.
-    function test_Bridge_RevertNoPeer() public {
+    function test_LzSend_RevertNoPeer() public {
         // Deploy a new bridge without setting peer
         TelcoinBridge bridgeNoPeer = new TelcoinBridge(
             address(telcoinA),
@@ -126,7 +126,7 @@ contract TelcoinBridgeBridgeTest is BaseSetup {
 
     /// @dev Uses fuzzing to verify successful call to TelcoinBridge::bridge with no expectation of
     ///      txn landing.
-    function testFuzz_Bridge(uint256 amount) public {
+    function testFuzz_LzSend(uint256 amount) public {
         // Bound amount to valid range
         amount = bound(amount, 1, USER_BALANCE);
 
