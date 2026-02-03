@@ -15,7 +15,7 @@ import "../utils/Addresses.sol";
 
 /**
  * @title DeployAllToTestnet
- * @author Chase Brown
+ * @author chasebrownn
  * @dev This script performs a multi-chain deployment of:
  *      - Legacy Telcoin (mock for testing migration flow)
  *      - TelcoinV3 (new 18-decimal token)
@@ -180,14 +180,18 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         // 1. Deploy
 
         token = _deployTelcoinV3(networkData.chainName, networkData.initialSupply);
-        migrator = _deployTelcoinMigration(networkData.chainName, legacyTelcoin, token, networkData.initialSupply);
+        migrator = _deployTelcoinMigration(networkData.chainName, legacyTelcoin, token);
         bridge = _deployTelcoinBridge(networkData.chainName, token, networkData.lz_endpoint);
 
         // 2. Configure
 
         TelcoinV3 telcoinContract = TelcoinV3(token);
+
         if (!telcoinContract.hasRole(MINTER_ROLE, address(bridge))) {
             telcoinContract.grantRole(MINTER_ROLE, address(bridge));
+        }
+        if (!telcoinContract.hasRole(MINTER_ROLE, address(migrator))) {
+            telcoinContract.grantRole(MINTER_ROLE, address(migrator));
         }
         if (!telcoinContract.hasRole(BURNER_ROLE, address(bridge))) {
             telcoinContract.grantRole(BURNER_ROLE, address(bridge));
@@ -213,8 +217,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         // build deployment params
         bytes memory telcoinV3Params = abi.encode(
             initSupply,
-            ADMIN,
-            _computeCreate3Address(SaltMath.guardSalt(_deployer, RAW_TELCOIN_MIGRATION_SALT))
+            ADMIN
         );
         // build init bytecode
         bytes memory telcoinV3Bytecode = bytes.concat(type(TelcoinV3).creationCode, telcoinV3Params);
@@ -232,7 +235,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         return contractAddress;
     }
 
-    function _deployTelcoinMigration(string memory chainName, address legacyToken, address telcoinV3, uint256 initSupply) internal returns (address) {
+    function _deployTelcoinMigration(string memory chainName, address legacyToken, address telcoinV3) internal returns (address) {
         // build deployment params
         bytes memory telcoinMigratorParams = abi.encode(
             legacyToken,
@@ -247,7 +250,6 @@ contract DeployAllToTestnet is DeployUtility, Roles {
 
         if (newDeployment) {
             console.log("Deployed Telcoin Migrator at address:", contractAddress);
-            require(IERC20(telcoinV3).balanceOf(contractAddress) == initSupply, "Migrator contract did not receive initial tokens");
             _saveDeploymentAddress(chainName, "TelcoinMigration", contractAddress);
         } else {
             console.log("Telcoin Migrator already deployed at:", contractAddress);

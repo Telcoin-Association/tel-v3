@@ -20,13 +20,12 @@ contract TelcoinV3 is ERC20Pausable, Roles, AccessControlEnumerable {
 
     /**
      * @dev Constructor that mints amount specified to the migration contract
-     * @param initialSupply_ The initial supply to mint on this chain
+     * @param initialSupply_ The initial supply to mint on this chain. Tokens go to admin. Can be 0.
      * @param admin_ The owner (Telcoin TAO Governance Safe)
-     * @param migration_ The TokenMigration contract that receives `initialSupply_` for this chain
      */
-    constructor(uint256 initialSupply_, address admin_, address migration_) ERC20("Telcoin", "TEL") {
+    constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") {
         if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert InvalidMintAmount();
-        _mint(migration_, initialSupply_);
+        _mint(admin_, initialSupply_);
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
     }
 

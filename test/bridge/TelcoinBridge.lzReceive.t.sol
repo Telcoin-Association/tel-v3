@@ -103,6 +103,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         vm.assume(amount > 0 && amount < type(uint128).max);
 
         uint256 preSupply = telcoinB.totalSupply();
+        uint256 preBal = telcoinB.balanceOf(recipient);
 
         Origin memory origin = Origin({
             srcEid: EID_A,
@@ -116,7 +117,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         vm.prank(address(endpointB));
         bridgeB.lzReceive(origin, guid, message, address(0), bytes(""));
 
-        assertEq(telcoinB.balanceOf(recipient), amount);
+        assertEq(telcoinB.balanceOf(recipient), preBal + amount);
         assertEq(telcoinB.totalSupply(), preSupply + amount);
     }
 }

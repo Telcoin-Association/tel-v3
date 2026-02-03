@@ -55,8 +55,8 @@ contract BaseSetup is Test, Roles {
         // Deploy TelcoinV3 on both "chains"
         vm.startPrank(owner);
 
-        telcoinA = new TelcoinV3(INITIAL_SUPPLY, owner, owner);
-        telcoinB = new TelcoinV3(INITIAL_SUPPLY, owner, owner);
+        telcoinA = new TelcoinV3(INITIAL_SUPPLY, owner);
+        telcoinB = new TelcoinV3(INITIAL_SUPPLY, owner);
 
         // Deploy bridges
         bridgeA = new TelcoinBridge(

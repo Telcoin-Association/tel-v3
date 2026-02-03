@@ -20,8 +20,7 @@ contract TelcoinV3Test is Test, Roles {
         vm.prank(owner);
         token = new TelcoinV3(
             INITIAL_SUPPLY, // initialSupply_
-            owner, // owner_
-            makeAddr("migration") // migration_
+            owner // owner_
         );
 
         vm.startPrank(owner);
