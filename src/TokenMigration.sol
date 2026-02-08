@@ -68,23 +68,24 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     /**
      * @dev Migrate oldToken to TelcoinV3
      * @notice Migrates entire balance and sends oldToken to BURN_ADDRESS
+     * @return amountNewToken Amount of tokens minted in response to migration
      */
-    function migrate() external whenNotPaused nonReentrant {
+    function migrate() external whenNotPaused nonReentrant returns (uint256 amountNewToken) {
         // user must have sufficient balance
         uint256 userBalance = oldToken.balanceOf(msg.sender);
         if (userBalance == 0) revert InvalidAmount();
 
         // convert from 2 decimals to 18 decimals
-        uint256 migrationAmount = userBalance * DECIMAL_MULTIPLIER;
-        totalMigrated += migrationAmount;
+        amountNewToken = getAmountOut(userBalance);
+        totalMigrated += amountNewToken;
 
         // transfer oldToken from user to burn address (locked permanently)
         oldToken.safeTransferFrom(msg.sender, BURN_ADDRESS, userBalance);
         assert(oldToken.balanceOf(msg.sender) == 0);
 
         // mint telcoinV3 to user
-        telcoinV3.mint(msg.sender, migrationAmount);
-        emit TokensMigrated(msg.sender, migrationAmount);
+        telcoinV3.mint(msg.sender, amountNewToken);
+        emit TokensMigrated(msg.sender, amountNewToken);
     }
 
     /**
@@ -103,12 +104,11 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
 
     /**
      * @notice Recover ERC20 tokens that were sent by mistake to this contract.
-     * @notice Cannot recover migration's TelcoinV3.
      * @dev This can only be done by the contract owner
      * @param destination The address to send the recovered tokens
      * @param tokenAddress The address of the token to recover
      */
-    function recoverERC20(address destination, address tokenAddress) external onlyOwner {
+    function recoverERC20(address destination, address tokenAddress) external nonReentrant onlyOwner {
         if (destination == address(0) || destination == BURN_ADDRESS || tokenAddress == address(0)) {
             revert ZeroAddress();
         }
@@ -135,5 +135,15 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Returns the amount of new tokens will be minted when `amountIn` of the oldToken is migrated.
+     * @dev Converts `amountIn` from 2 decimals to 18 with decimal multiplier
+     * @param amountIn Amount of oldToken to be migrated.
+     * @return The amount of new token that will be minted during migration
+     */
+    function getAmountOut(uint256 amountIn) public pure returns (uint256) {
+        return amountIn * DECIMAL_MULTIPLIER;
     }
 }

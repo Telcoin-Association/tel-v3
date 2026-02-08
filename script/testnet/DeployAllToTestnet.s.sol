@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+import {VmSafe} from "forge-std/Vm.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
@@ -34,7 +35,7 @@ import "../utils/Addresses.sol";
  *
  * Live deployment:
  * ```
- * forge script script/testnet/DeployAllToTestnet.s.sol --multi --broadcast --verify
+ * forge script script/testnet/DeployAllToTestnet.s.sol --multi --broadcast --verify -vvvv
  * ```
  *
  * ## Deployment Order
@@ -54,13 +55,15 @@ import "../utils/Addresses.sol";
  * Deployment addresses are saved to `deployments/<chainName>.json`
  */
 contract DeployAllToTestnet is DeployUtility, Roles {
-    // ~ Variables ~
+    // ---------
+    // Variables
+    // ---------
 
     /// @dev TODO: Configure all constants
 
-    bytes32 internal constant RAW_TELCOIN_V3_SALT = keccak256("TELCOIN_V3_SALT_0");
-    bytes32 internal constant RAW_TELCOIN_MIGRATION_SALT = keccak256("TELCOIN_MIGRATION_SALT_0");
-    bytes32 internal constant RAW_TELCOIN_BRIDGE_SALT = keccak256("TELCOIN_BRIDGE_SALT_0");
+    bytes32 internal constant RAW_TELCOIN_V3_SALT = keccak256("RAW_TELCOIN_V3_SALT_V0");
+    bytes32 internal constant RAW_TELCOIN_MIGRATION_SALT = keccak256("RAW_TELCOIN_MIGRATION_SALT_V1");
+    bytes32 internal constant RAW_TELCOIN_BRIDGE_SALT = keccak256("RAW_TELCOIN_BRIDGE_SALT_V0");
 
     uint256 internal constant INITIAL_TELV3_SUPPLY = 100_000_000 ether; // initial supply of 100M tokens per chain
     uint256 internal constant MIGRATION_DURATION = 365 * 1 days;
@@ -87,7 +90,9 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         address bridgeAddress;
     }
 
-    // ~ Setup ~
+    // -----
+    // SetUp
+    // -----
     
     function setUp() public {
         _setup();
@@ -118,7 +123,9 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         ));
     }
 
-    // ~ Script ~
+    // ------
+    // Script
+    // ------
 
     function run() public {
 
@@ -179,12 +186,14 @@ contract DeployAllToTestnet is DeployUtility, Roles {
 
         // 1. Deploy
 
-        address legacyTelcoin;
-        if (networkData.legacyTel == address(0)) legacyTelcoin = _deployLegacyTelcoin(networkData.chainName);
+        address legacyTelcoin = networkData.legacyTel;
+        if (legacyTelcoin == address(0)) {
+            legacyTelcoin = _deployLegacyTelcoin();
+        }
 
-        token = _deployTelcoinV3(networkData.chainName, networkData.initialSupply);
-        migrator = _deployTelcoinMigration(networkData.chainName, legacyTelcoin, token);
-        bridge = _deployTelcoinBridge(networkData.chainName, token, networkData.lz_endpoint);
+        token = _deployTelcoinV3(networkData.initialSupply);
+        migrator = _deployTelcoinMigration(legacyTelcoin, token);
+        bridge = _deployTelcoinBridge(token, networkData.lz_endpoint);
 
         // 2. Configure
 
@@ -200,19 +209,21 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             telcoinContract.grantRole(BURNER_ROLE, address(bridge));
         }
 
-        // 3. Save Addresses
+        // 3. Save Addresses (If broadcast)
 
-        _saveDeploymentAddress(networkData.chainName, "TelcoinLegacy", legacyTelcoin);
-        _saveDeploymentAddress(networkData.chainName, "TelcoinV3", token);
-        _saveDeploymentAddress(networkData.chainName, "TelcoinMigration", migrator);
-        _saveDeploymentAddress(networkData.chainName, "TelcoinBridge", bridge);
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            _saveDeploymentAddress(networkData.chainName, "TelcoinLegacy", legacyTelcoin);
+            _saveDeploymentAddress(networkData.chainName, "TelcoinV3", token);
+            _saveDeploymentAddress(networkData.chainName, "TelcoinMigration", migrator);
+            _saveDeploymentAddress(networkData.chainName, "TelcoinBridge", bridge);
+        }
     }
 
     // ----------------------
     // Individual Deployments
     // ----------------------
 
-    function _deployLegacyTelcoin(string memory chainName) internal returns (address) {
+    function _deployLegacyTelcoin() internal returns (address) {
         // Deploy legacy Telcoin using deployCode to handle incompatible pragma (^0.4.18)
         // Constructor takes a distributor address that receives the total supply
         address legacyTelcoin = deployCode("Telcoin.sol:Telcoin", abi.encode(_deployer));
@@ -221,7 +232,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         return legacyTelcoin;
     }
 
-    function _deployTelcoinV3(string memory chainName, uint256 initSupply) internal returns (address) {
+    function _deployTelcoinV3(uint256 initSupply) internal returns (address) {
         // build deployment params
         bytes memory telcoinV3Params = abi.encode(
             initSupply,
@@ -236,13 +247,12 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             console.log("Deployed TelcoinV3 at address:", contractAddress);
         } else {
             console.log("TelcoinV3 already deployed at:", contractAddress);
-            console.log("Skipping...");
         }
 
         return contractAddress;
     }
 
-    function _deployTelcoinMigration(string memory chainName, address legacyToken, address telcoinV3) internal returns (address) {
+    function _deployTelcoinMigration(address legacyToken, address telcoinV3) internal returns (address) {
         // build deployment params
         bytes memory telcoinMigratorParams = abi.encode(
             legacyToken,
@@ -259,13 +269,12 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             console.log("Deployed Telcoin Migrator at address:", contractAddress);
         } else {
             console.log("Telcoin Migrator already deployed at:", contractAddress);
-            console.log("Skipping...");
         }
 
         return contractAddress;
     }
 
-    function _deployTelcoinBridge(string memory chainName, address telcoinV3, address endpoint) internal returns (address) {
+    function _deployTelcoinBridge(address telcoinV3, address endpoint) internal returns (address) {
         // build deployment params
         bytes memory telcoinBridgeParams = abi.encode(
             telcoinV3,
@@ -281,7 +290,6 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             console.log("Deployed Telcoin Bridge at address:", contractAddress);
         } else {
             console.log("Telcoin Bridge already deployed at:", contractAddress);
-            console.log("Skipping...");
         }
 
         return contractAddress;

@@ -48,7 +48,7 @@ abstract contract DeployUtility is Script {
      * @param guardedSalt The guarded salt (with deployer address in first 20 bytes)
      * @param deployer The address that will call CreateX (msg.sender during deployment)
      */
-    function _computeCreate3Address(bytes32 guardedSalt, address deployer) internal view returns (address) {
+    function _computeCreate3Address(bytes32 guardedSalt, address deployer) internal pure returns (address) {
         bytes32 transformedSalt = SaltMath.getCreateXGuardedSalt(guardedSalt, deployer);
         return ICreateX(CREATEX).computeCreate3Address(transformedSalt, CREATEX);
     }

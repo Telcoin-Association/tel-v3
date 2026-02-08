@@ -93,17 +93,20 @@ contract TokenMigrationTest is Test, Roles {
 
         // take current burn balance since this forks live
         uint256 currentBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+        uint256 quote = migration.getAmountOut(INITIAL_USER_BAL);
 
         // approve migration contract
         oldToken.approve(address(migration), INITIAL_USER_BAL);
 
         // perform migration
-        migration.migrate();
+        uint256 amountNewTokens = migration.migrate();
 
         // check user's final balances
+        assertEq(quote, amountNewTokens);
+        assertEq(amountNewTokens, INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER());
         assertEq(oldToken.balanceOf(user1), 0);
-        assertEq(telcoinV3.balanceOf(user1), INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER());
-        assertEq(telcoinV3.totalSupply(), preSupply + INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER());
+        assertEq(telcoinV3.balanceOf(user1), amountNewTokens);
+        assertEq(telcoinV3.totalSupply(), preSupply + amountNewTokens);
         // check tokens were burned
         uint256 expectedBurnBalance = currentBurnBalance + INITIAL_USER_BAL;
         assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), expectedBurnBalance);

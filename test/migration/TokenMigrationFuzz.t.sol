@@ -83,29 +83,31 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // Record initial state
         uint256 initialBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
         uint256 preSupplyV3 = telcoinV3.totalSupply();
+        uint256 quote = migration.getAmountOut(amount);
 
         vm.startPrank(user);
 
         // Approve and migrate
         oldToken.approve(address(migration), amount);
-        migration.migrate();
+        uint256 amountNewTokens = migration.migrate();
 
         vm.stopPrank();
 
         // Verify invariants
-        uint256 expectedNewAmount = amount * migration.DECIMAL_MULTIPLIER();
+        assertEq(amountNewTokens, amount * migration.DECIMAL_MULTIPLIER());
+        assertEq(amountNewTokens, quote);
 
         // User should have no old tokens (entire balance migrated)
         assertEq(oldToken.balanceOf(user), 0, "User should have no old tokens");
 
         // User should have correct new token amount
-        assertEq(telcoinV3.balanceOf(user), expectedNewAmount, "Incorrect new token balance");
+        assertEq(telcoinV3.balanceOf(user), amountNewTokens, "Incorrect new token balance");
 
         // Old tokens should be burned
         assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), initialBurnBalance + amount, "Incorrect burn amount");
 
         // Verify change in total supply
-        assertEq(telcoinV3.totalSupply(), preSupplyV3 + expectedNewAmount, "Migration balance mismatch");
+        assertEq(telcoinV3.totalSupply(), preSupplyV3 + amountNewTokens, "Migration balance mismatch");
     }
 
     /**
