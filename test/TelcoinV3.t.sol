@@ -81,7 +81,9 @@ contract TelcoinV3Test is Test, Roles {
 
     function test_RevertIf_NonOwnerPauses() public {
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", attacker, PAUSER_ROLE));
+        vm.expectRevert(
+            abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", attacker, PAUSER_ROLE)
+        );
         token.pause();
     }
 

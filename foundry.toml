@@ -24,3 +24,13 @@ shrink_run_limit = 5000      # Shrinking for invariant tests
 [lint]
 lint_on_build = false
 ignore = ["quotes"]
+
+[fmt]
+ignore = [
+    "src/TelcoinBridge.sol",
+    "src/TelcoinV3.sol",
+    "src/TokenMigration.sol",
+    "src/legacy/Telcoin.sol",
+    "test/**",
+    "script/**"
+]
