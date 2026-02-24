@@ -94,9 +94,9 @@ contract ConfigureAllBridges is DeployUtility {
     function setUp() public {
         _setup();
 
-        // ============================================
+        // -----------------------------------------------------------------------------
         // CONFIGURE CHAINS HERE
-        // ============================================
+        // -----------------------------------------------------------------------------
         //
         // To find addresses for a new chain:
         // 1. Go to https://docs.layerzero.network/v2/deployments/chains/<chain-name>
@@ -104,7 +104,7 @@ contract ConfigureAllBridges is DeployUtility {
         // 3. DVN addresses: https://docs.layerzero.network/v2/deployments/dvn-addresses
         //
         // For testnets, LayerZero Labs DVN is typically the only available DVN.
-        // ============================================
+        // -----------------------------------------------------------------------------
 
         // Ethereum Sepolia
         allChains.push(ChainConfig({
