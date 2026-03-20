@@ -20,16 +20,8 @@ contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
 
     // ~ Constants ~
 
-    /// @dev Default gas limit for destination execution
-    uint128 private constant DEFAULT_DST_GAS_LIMIT = 200_000;
-
     /// @notice The TelcoinV3 token contract
     IERC20Mintable public immutable telcoin;
-
-    // ~ Storage ~
-
-    /// @notice Gas limit for lzReceive execution on destination chain
-    uint128 public dstGasLimit;
 
     // ~ Constructor ~
 
@@ -46,7 +38,6 @@ contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
     ) OApp(_endpoint, _delegate) Ownable(_delegate) {
         if (_telcoin == address(0)) revert ZeroAddress();
         telcoin = IERC20Mintable(_telcoin);
-        dstGasLimit = DEFAULT_DST_GAS_LIMIT;
     }
 
     // ~ Core Methods ~
@@ -127,15 +118,6 @@ contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
     }
 
     // ~ Permissioned Methods ~
-
-    /**
-     * @notice Set the gas limit for destination chain execution
-     * @param _dstGasLimit New gas limit
-     */
-    function setDstGasLimit(uint128 _dstGasLimit) external onlyOwner {
-        dstGasLimit = _dstGasLimit;
-        emit DstGasLimitSet(_dstGasLimit);
-    }
 
     /**
      * @notice Rescue ERC20 tokens accidentally sent to this contract

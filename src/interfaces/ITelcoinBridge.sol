@@ -12,9 +12,6 @@ interface ITelcoinBridge {
     /// @notice Emitted when tokens are received from another chain
     event BridgeReceived(bytes32 indexed guid, uint32 indexed srcEid, address indexed to, uint256 amount);
 
-    /// @notice Emitted when destination gas limit is updated
-    event DstGasLimitSet(uint128 dstGasLimit);
-
     // ~ Errors ~
 
     error ZeroAmount();
@@ -31,8 +28,6 @@ interface ITelcoinBridge {
         external
         view
         returns (MessagingFee memory fee);
-
-    function setDstGasLimit(uint128 _dstGasLimit) external;
 
     function rescueTokens(address _token, uint256 _amount) external;
 }

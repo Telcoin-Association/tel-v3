@@ -25,7 +25,7 @@ contract TelcoinBridgeTest is BaseSetup {
     function test_Constructor() public view {
         assertEq(address(bridgeA.telcoin()), address(telcoinA));
         assertEq(bridgeA.owner(), owner);
-        assertEq(bridgeA.dstGasLimit(), 200_000);
+        //assertEq(bridgeA.dstGasLimit(), 200_000);
     }
   
     /// @dev Verifies initialization fails when _telcoin == address(0).
@@ -132,36 +132,6 @@ contract TelcoinBridgeTest is BaseSetup {
     // ----------------------------
     // Permissioned Functions Tests
     // ----------------------------
-
-    // ~ setDstGasLimit ~
-
-    /// @dev Verifies TelcoinBridge::setDstGasLimit results in the expected state changes.
-    function test_SetDstGasLimit() public {
-        uint128 newGasLimit = 300_000;
-
-        vm.prank(owner);
-        bridgeA.setDstGasLimit(newGasLimit);
-
-        assertEq(bridgeA.dstGasLimit(), newGasLimit);
-    }
-
-    /// @dev Verifies TelcoinBridge::setDstGasLimit emits the `DstGasLimitSet` event.
-    function test_SetDstGasLimit_EmitsEvent() public {
-        uint128 newGasLimit = 400_000;
-
-        vm.prank(owner);
-        vm.expectEmit(true, true, true, true);
-        emit DstGasLimitSet(newGasLimit);
-
-        bridgeA.setDstGasLimit(newGasLimit);
-    }
-
-    /// @dev Verifies TelcoinBridge::setDstGasLimit can only be called by the owner.
-    function test_SetDstGasLimit_RevertNotOwner() public {
-        vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-        bridgeA.setDstGasLimit(300_000);
-    }
 
     // ~ pause/unpause ~
 
