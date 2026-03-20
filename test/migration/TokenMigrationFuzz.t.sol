@@ -56,7 +56,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // deploy token migration contract
         bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, block.timestamp + 365 days)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);

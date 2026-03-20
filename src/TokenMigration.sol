@@ -32,13 +32,20 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
 
+    /// @notice The timestamp when migration has come to a conclusion. All attempts to migrate will
+    /// revert if block.timestamp is beyond migrationExpiry.
+    uint256 public migrationExpiry;
+
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
+    event MigrationExpirySet(uint256 oldExpiry, uint256 newExpiry);
 
     // errors
     error InvalidAmount();
+    error InvalidExpiry();
     error ZeroAddress();
+    error MigrationConcluded();
 
     /**
      * @dev Constructor
@@ -46,11 +53,14 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
      * @param _owner Owner address
      */
-    constructor(address _oldToken, address _telcoinV3, address _owner) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationExpiry) Ownable(_owner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
+        if (_migrationExpiry == 0) revert InvalidExpiry();
 
         oldToken = IERC20Mintable(_oldToken);
         telcoinV3 = IERC20Mintable(_telcoinV3);
+
+        migrationExpiry = _migrationExpiry;
     }
 
     /**
@@ -59,6 +69,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @return amountNewToken Amount of tokens minted in response to migration
      */
     function migrate() external whenNotPaused nonReentrant returns (uint256 amountNewToken) {
+        if (block.timestamp > migrationExpiry) revert MigrationConcluded();
         // user must have sufficient balance
         uint256 userBalance = oldToken.balanceOf(msg.sender);
         if (userBalance == 0) revert InvalidAmount();
@@ -74,6 +85,17 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         // mint telcoinV3 to user
         telcoinV3.mint(msg.sender, amountNewToken);
         emit TokensMigrated(msg.sender, amountNewToken);
+    }
+
+    /**
+     * @dev Allows the admin to set the migration expiry date - when migration will be concluded.
+     * @notice New migration timestamp must be greater than the current expiry
+     * @param newMigrationExpiry New timestamp when migrations will be concluded
+     */
+    function setMigrationExpiry(uint256 newMigrationExpiry) external onlyOwner {
+        if (newMigrationExpiry == 0 || migrationExpiry > newMigrationExpiry) revert InvalidExpiry();
+        emit MigrationExpirySet(migrationExpiry, newMigrationExpiry);
+        migrationExpiry = newMigrationExpiry;
     }
 
     /**
