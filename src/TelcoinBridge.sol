@@ -116,7 +116,7 @@ contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
         bytes calldata _message,
         address /*_executor*/,
         bytes calldata /*_extraData*/
-    ) internal override {
+    ) internal whenNotPaused override {
         // Decode payload
         (address to, uint256 amount) = abi.decode(_message, (address, uint256));
 

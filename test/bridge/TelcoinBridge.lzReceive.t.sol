@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 
 /**
@@ -119,5 +120,28 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
 
         assertEq(telcoinB.balanceOf(recipient), preBal + amount);
         assertEq(telcoinB.totalSupply(), preSupply + amount);
+    }
+
+    /// @dev Verifies if contract is paused, a call to _lzReceive will revert.
+    function test_LzReceive_RevertWhenPaused() public {
+        uint256 mintAmount = 1 ether;
+
+        // Simulate receiving a cross-chain message
+        Origin memory origin = Origin({
+            srcEid: EID_A,
+            sender: _addressToBytes32(address(bridgeA)),
+            nonce: 1
+        });
+
+        bytes memory message = abi.encode(user1, mintAmount);
+        bytes32 guid = keccak256("test-guid");
+
+        vm.prank(owner);
+        bridgeB.pause();
+
+        // Call lzReceive from endpoint (simulated)
+        vm.prank(address(endpointB));
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        bridgeB.lzReceive(origin, guid, message, address(0), bytes(""));
     }
 }
