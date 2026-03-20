@@ -159,12 +159,8 @@ contract BridgeTokens is DeployUtility {
 
         vm.startBroadcast(_pk);
 
-        // Step 1: Approve bridge contract to spend tokens
-        console.log("Step 1: Approving bridge contract...");
-        token.approve(bridgeContract, BRIDGE_AMOUNT);
-
-        // Step 2: Execute bridge
-        console.log("Step 2: Calling bridge()...");
+        // Execute bridge
+        console.log("Calling bridge()...");
         MessagingReceipt memory receipt = bridge.bridge{value: fee.nativeFee}(
             dst.eid,
             _deployer, // Send to same address on destination
