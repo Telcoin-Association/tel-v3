@@ -31,20 +31,12 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     /// @notice The total amount of TEL migrated via this contract,
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
-    /// @notice The timestamp after which the owner can withdraw unmigrated tokens; can be extended
-    /// @notice Does not block migration on expiry; simply provides visibility of owner token-access
-    uint256 public ownerAccessTimestamp;
 
     // events
     event TokensMigrated(address indexed user, uint256 amount);
-    event RemainingTokensWithdrawn(address indexed to, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
-    event OwnerAccessTimestampUpdated(uint256 oldTime, uint256 newTime);
 
     // errors
-    error InsufficientContractBalance(uint256 required, uint256 available);
-    error MigrationPeriodNotEnded(uint256 currentTime, uint256 unlockTime);
-    error InvalidEndTime(uint256 proposedTime);
     error InvalidAmount();
     error ZeroAddress();
 
@@ -53,16 +45,12 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @param _oldToken Address of the old oldToken token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
      * @param _owner Owner address
-     * @param _migrationDuration The duration (in seconds) the migration window should remain open (e.g. 365 days)
      */
-    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationDuration) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _owner) Ownable(_owner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
 
         oldToken = IERC20Mintable(_oldToken);
         telcoinV3 = IERC20Mintable(_telcoinV3);
-
-        // Set the initial end time based on deployment time + duration
-        ownerAccessTimestamp = block.timestamp + _migrationDuration;
     }
 
     /**
@@ -86,20 +74,6 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         // mint telcoinV3 to user
         telcoinV3.mint(msg.sender, amountNewToken);
         emit TokensMigrated(msg.sender, amountNewToken);
-    }
-
-    /**
-     * @dev Update the migration end time (owner only)
-     * @notice This allows the owner to extend the migration window
-     * @param _newTime The new absolute timestamp for the migration end
-     */
-    function updateOwnerAccessTimestamp(uint256 _newTime) external onlyOwner {
-        if (_newTime <= ownerAccessTimestamp || _newTime > block.timestamp + MAX_EXTENSION_PERIOD) {
-            revert InvalidEndTime(_newTime);
-        }
-
-        emit OwnerAccessTimestampUpdated(ownerAccessTimestamp, _newTime);
-        ownerAccessTimestamp = _newTime;
     }
 
     /**
