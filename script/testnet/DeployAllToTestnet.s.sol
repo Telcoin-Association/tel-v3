@@ -208,6 +208,12 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         if (!telcoinContract.hasRole(BURNER_ROLE, address(bridge))) {
             telcoinContract.grantRole(BURNER_ROLE, address(bridge));
         }
+        if (!telcoinContract.hasRole(PAUSER_ROLE, TESTNET_ADMIN)) {
+            telcoinContract.grantRole(PAUSER_ROLE, TESTNET_ADMIN);
+        }
+        if (!telcoinContract.hasRole(UNPAUSER_ROLE, TESTNET_ADMIN)) {
+            telcoinContract.grantRole(UNPAUSER_ROLE, TESTNET_ADMIN);
+        }
 
         // 3. Save Addresses (If broadcast)
 
