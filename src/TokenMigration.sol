@@ -79,7 +79,6 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
 
         // transfer oldToken from user to burn address (locked permanently)
         oldToken.safeTransferFrom(msg.sender, BURN_ADDRESS, userBalance);
-        assert(oldToken.balanceOf(msg.sender) == 0);
 
         // mint telcoinV3 to user
         telcoinV3.mint(msg.sender, amountNewToken);
