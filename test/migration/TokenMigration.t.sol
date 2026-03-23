@@ -67,7 +67,7 @@ contract TokenMigrationTest is Test, Roles {
         // deploy token migration contract
         bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, block.timestamp + 365 days)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);
@@ -207,6 +207,10 @@ contract TokenMigrationTest is Test, Roles {
     }
 
     // ~ migrationExpiry tests ~
+
+    function testMigrate_verifyFuture() public {
+        assertGt(migration.migrationExpiry(), block.timestamp);
+    }
 
     function testMigrate_revertsAfterExpiry() public {
         vm.warp(migration.migrationExpiry() + 1);

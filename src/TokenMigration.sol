@@ -25,8 +25,6 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
 
     /// @notice Decimal difference multiplier (10^16)
     uint256 public constant DECIMAL_MULTIPLIER = 10 ** 16;
-    /// @notice The owner may extend the migration window by up to 2 years
-    uint256 public constant MAX_EXTENSION_PERIOD = 730 days;
 
     /// @notice The total amount of TEL migrated via this contract,
     /// denominated using TelcoinV3's 18 decimals
@@ -51,16 +49,17 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev Constructor
      * @param _oldToken Address of the old oldToken token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
-     * @param _owner Owner address
+     * @param _owner Owner address of this contract
+     * @param _migrationDuration Duration of migration in seconds
      */
-    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationExpiry) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationDuration) Ownable(_owner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
-        if (_migrationExpiry == 0) revert InvalidExpiry();
+        if (_migrationDuration == 0) revert InvalidExpiry();
 
         oldToken = IERC20Mintable(_oldToken);
         telcoinV3 = IERC20Mintable(_telcoinV3);
 
-        migrationExpiry = _migrationExpiry;
+        migrationExpiry = block.timestamp + _migrationDuration;
     }
 
     /**
