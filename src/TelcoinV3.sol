@@ -33,22 +33,22 @@ contract TelcoinV3 is ERC20Pausable, Roles, AccessControlEnumerable {
     // Permissioned
     // ------------
 
-    /// @notice Mint tokens - only callable by the bridge
+    /// @notice Mint tokens. Only callable by MINTER_ROLE
     function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
         _mint(to, amount);
     }
 
-    /// @notice Burn tokens - only callable by the bridge
+    /// @notice Burn tokens. Only callable by BURNER_ROLE
     function burn(address from, uint256 amount) external onlyRole(BURNER_ROLE) {
         _burn(from, amount);
     }
 
-    /// @notice Pauses minting and burning functionality from this contract.
+    /// @notice Pauses all balance updates (transfers, mints, and burns)
     function pause() public onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    /// @notice Unpauses minting and burning functionality from this contract.
+    /// @notice Unpauses all balance updates (transfers, mints, and burns)
     function unpause() public onlyRole(UNPAUSER_ROLE) {
         _unpause();
     }
