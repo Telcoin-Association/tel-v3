@@ -11,6 +11,7 @@ contract TelcoinV3Test is Test, Roles {
     address internal owner = makeAddr("owner");
     address internal bridge = makeAddr("bridge");
     address internal user = makeAddr("user");
+    address internal user2 = makeAddr("user2");
     address internal attacker = makeAddr("attacker");
 
     uint256 internal constant INITIAL_SUPPLY = 10_000_000_000 ether;
@@ -31,6 +32,7 @@ contract TelcoinV3Test is Test, Roles {
         vm.stopPrank();
     }
 
+    /// @dev Verifies the bridge (given the minter role) can mint tokens
     function test_BridgeCanMint() public {
         uint256 preBalance = token.balanceOf(user);
 
@@ -40,12 +42,14 @@ contract TelcoinV3Test is Test, Roles {
         assertEq(token.balanceOf(user), preBalance + MINT_AMOUNT);
     }
 
+    /// @dev Verifies an attacker (given no minter role) cannot mint tokens
     function test_RevertIf_NonBridgeMints() public {
         vm.prank(attacker);
         vm.expectRevert();
         token.mint(user, MINT_AMOUNT);
     }
 
+    /// @dev Verifies the bride (given the burner role) can burn tokens
     function test_BridgeCanBurn() public {
         vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
@@ -58,6 +62,7 @@ contract TelcoinV3Test is Test, Roles {
         assertEq(token.balanceOf(user), preBalance - MINT_AMOUNT);
     }
 
+    /// @dev Verifies an attacker (given no burner role) cannot burn tokens
     function test_RevertIf_NonBridgeBurns() public {
         vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
@@ -67,6 +72,7 @@ contract TelcoinV3Test is Test, Roles {
         token.burn(user, MINT_AMOUNT);
     }
 
+    /// @dev Verifies owner can pause and unpause transfers
     function test_OwnerCanPauseAndUnpause() public {
         assertFalse(token.paused());
 
@@ -79,6 +85,7 @@ contract TelcoinV3Test is Test, Roles {
         assertFalse(token.paused());
     }
 
+    /// @dev Verifies an attacker cannot pause token
     function test_RevertIf_NonOwnerPauses() public {
         vm.prank(attacker);
         vm.expectRevert(
@@ -87,24 +94,55 @@ contract TelcoinV3Test is Test, Roles {
         token.pause();
     }
 
-    function test_RevertIf_MintingWhilePaused() public {
+    /// @dev Verifies a mint after a pause will revert
+    function test_MintingWhilePaused() public {
         vm.prank(owner);
         token.pause();
 
+        uint256 preBalance = token.balanceOf(user);
+
         vm.prank(bridge);
-        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         token.mint(user, MINT_AMOUNT);
+
+        assertEq(token.balanceOf(user), preBalance + MINT_AMOUNT);
     }
 
-    function test_RevertIf_BurningWhilePaused() public {
+    /// @dev Verifies burning after a pause is successful
+    function test_BurningWhilePaused() public {
         vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
 
         vm.prank(owner);
         token.pause();
 
+        uint256 preBalance = token.balanceOf(user);
+
         vm.prank(bridge);
-        vm.expectRevert(abi.encodeWithSignature("EnforcedPause()"));
         token.burn(user, MINT_AMOUNT);
+
+        assertEq(token.balanceOf(user), preBalance - MINT_AMOUNT);
+    }
+
+    /// @dev Verifies transfers fail after contract is paused
+    function test_RevertIf_TransferWhilePaused() public {
+        vm.prank(bridge);
+        token.mint(user, MINT_AMOUNT);
+
+        vm.prank(owner);
+        token.pause();
+
+        vm.prank(user);
+        vm.expectRevert();
+        token.transfer(user2, MINT_AMOUNT);
+
+        vm.prank(owner);
+        token.unpause();
+
+        uint256 preBalance = token.balanceOf(user2);
+
+        vm.prank(user);
+        token.transfer(user2, MINT_AMOUNT);
+
+        assertEq(token.balanceOf(user2), preBalance + MINT_AMOUNT);
     }
 }

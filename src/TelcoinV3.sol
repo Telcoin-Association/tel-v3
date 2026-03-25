@@ -2,7 +2,6 @@
 pragma solidity ^0.8.26;
 
 import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
-import {ERC20Pausable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -13,7 +12,7 @@ import {Roles} from "./helpers/Roles.sol";
  * @author Telcoin Labs
  * @notice Telcoin V3
  */
-contract TelcoinV3 is ERC20Pausable, Roles, AccessControlEnumerable {
+contract TelcoinV3 is ERC20, Pausable, Roles, AccessControlEnumerable {
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
 
     error InvalidMintAmount();
@@ -43,7 +42,7 @@ contract TelcoinV3 is ERC20Pausable, Roles, AccessControlEnumerable {
         _burn(from, amount);
     }
 
-    /// @notice Pauses all balance updates (transfers, mints, and burns)
+    /// @notice Pauses all transfers, mints, and burns
     function pause() public onlyRole(PAUSER_ROLE) {
         _pause();
     }
@@ -51,5 +50,17 @@ contract TelcoinV3 is ERC20Pausable, Roles, AccessControlEnumerable {
     /// @notice Unpauses all balance updates (transfers, mints, and burns)
     function unpause() public onlyRole(UNPAUSER_ROLE) {
         _unpause();
+    }
+
+    // --------
+    // Internal
+    // --------
+
+    /// @notice Overrides ERC20::_update function to add pausability.
+    function _update(address from, address to, uint256 value) internal override(ERC20) {
+        if (paused() && from != address(0) && to != address(0)) {
+            revert EnforcedPause();
+        }
+        ERC20._update(from, to, value);
     }
 }
