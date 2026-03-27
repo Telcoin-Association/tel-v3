@@ -5,8 +5,12 @@ out/
 # Ignores development broadcast logs
 broadcast
 
-# Docs
-docs/
-
 # Dotenv file
 .env
+
+# Misc
+lcov.info
+TODO.txt
+out.md
+Notes.txt
+Verify.txt

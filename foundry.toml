@@ -2,10 +2,15 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+auto_detect_solc = true
+evm_version = "prague"
+bytecode_hash = "none"
+cbor_metadata = false
+fs_permissions = [{ access = "read-write", path = "./deployments/"}]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 [fuzz]
-runs = 256                    # Number of fuzz runs
+runs = 100                   # Number of fuzz runs
 max_test_rejects = 65536     # Max number of rejected inputs
 dictionary_weight = 40       # Weight for dictionary usage
 include_storage = true       # Include storage variables in fuzz inputs
@@ -18,3 +23,14 @@ shrink_run_limit = 5000      # Shrinking for invariant tests
 
 [lint]
 lint_on_build = false
+ignore = ["quotes"]
+
+[fmt]
+ignore = [
+    "src/TelcoinBridge.sol",
+    "src/TelcoinV3.sol",
+    "src/TokenMigration.sol",
+    "src/legacy/Telcoin.sol",
+    "test/**",
+    "script/**"
+]

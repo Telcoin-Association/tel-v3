@@ -2,16 +2,16 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {TelcoinV3} from "../src/TelcoinV3.sol";
-import {TokenMigration} from "../src/TokenMigration.sol";
-import {Create3Utils} from "../deployments/Create3Utils.sol";
+import {TelcoinV3} from "../../src/TelcoinV3.sol";
+import {TokenMigration} from "../../src/TokenMigration.sol";
+import {Create3Utils} from "../utils/Create3Utils.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {Roles} from "../../src/helpers/Roles.sol";
 
-contract TokenMigrationTest is Test {
+contract TokenMigrationTest is Test, Roles {
     // contracts
     IERC20 public oldToken;
     TelcoinV3 public telcoinV3;
@@ -53,14 +53,10 @@ contract TokenMigrationTest is Test {
 
         vm.startPrank(deployer);
 
-        // predict create3 address for token migration contract
-        bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
-        address expectedMigrationAddress = create3.addressOf(migrationSalt);
-
         // deploy new token using create3 and mint to migration contract
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner, expectedMigrationAddress)
+            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
@@ -69,14 +65,18 @@ contract TokenMigrationTest is Test {
         assertEq(IERC20Metadata(address(telcoinV3)).decimals(), 18, "Telcoin V3 should have 18 decimals");
 
         // deploy token migration contract
+        bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
             type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
-        assertEq(expectedMigrationAddress, migrationAddress);
         migration = TokenMigration(migrationAddress);
 
         vm.stopPrank();
+
+        // set minter role on TelcoinV3
+        vm.prank(owner);
+        telcoinV3.grantRole(MINTER_ROLE, address(migration));
 
         // fund accounts
         deal(address(oldToken), user1, INITIAL_USER_BAL);
@@ -89,20 +89,24 @@ contract TokenMigrationTest is Test {
         // check initial balances
         assertEq(oldToken.balanceOf(user1), INITIAL_USER_BAL);
         assertEq(telcoinV3.balanceOf(user1), 0);
-        assertEq(telcoinV3.balanceOf(address(migration)), INITIAL_NEW_TOKEN_SUPPLY);
+        uint256 preSupply = telcoinV3.totalSupply();
 
         // take current burn balance since this forks live
         uint256 currentBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+        uint256 quote = migration.getAmountOut(INITIAL_USER_BAL);
 
         // approve migration contract
         oldToken.approve(address(migration), INITIAL_USER_BAL);
 
         // perform migration
-        migration.migrate();
+        uint256 amountNewTokens = migration.migrate();
 
         // check user's final balances
+        assertEq(quote, amountNewTokens);
+        assertEq(amountNewTokens, INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER());
         assertEq(oldToken.balanceOf(user1), 0);
-        assertEq(telcoinV3.balanceOf(user1), INITIAL_USER_BAL * migration.DECIMAL_MULTIPLIER());
+        assertEq(telcoinV3.balanceOf(user1), amountNewTokens);
+        assertEq(telcoinV3.totalSupply(), preSupply + amountNewTokens);
         // check tokens were burned
         uint256 expectedBurnBalance = currentBurnBalance + INITIAL_USER_BAL;
         assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), expectedBurnBalance);
@@ -142,24 +146,6 @@ contract TokenMigrationTest is Test {
         vm.stopPrank();
     }
 
-    function testWithdrawRemainingTelcoinV3() public {
-        // First do a migration
-        vm.startPrank(user1);
-        oldToken.approve(address(migration), INITIAL_USER_BAL);
-        migration.migrate();
-        vm.stopPrank();
-
-        // Owner withdraws remaining after 1 year
-        vm.warp(block.timestamp + 365 days + 1);
-        uint256 remainingBalance = telcoinV3.balanceOf(address(migration));
-
-        vm.prank(owner);
-        migration.withdrawRemainingTelcoinV3(owner);
-
-        assertEq(telcoinV3.balanceOf(owner), remainingBalance);
-        assertEq(telcoinV3.balanceOf(address(migration)), 0);
-    }
-
     function testRecoverStuckOldToken() public {
         address migrationContract = address(migration);
         // sanity check
@@ -192,10 +178,6 @@ contract TokenMigrationTest is Test {
         migration.unpause();
 
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-        migration.withdrawRemainingTelcoinV3(user1);
-
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-
         migration.recoverERC20(user1, OLDTOKEN_ADDRESS);
 
         vm.stopPrank();
@@ -224,14 +206,93 @@ contract TokenMigrationTest is Test {
         assertEq(telcoinV3.balanceOf(user1), expectedBalance);
     }
 
-    function testRecoverTelcoinV3Fails() public {
-        address migrationContract = address(migration);
-        // sanity check
-        assert(telcoinV3.balanceOf(migrationContract) > INITIAL_USER_BAL);
+    // ~ migrationExpiry tests ~
 
-        // owner tries to recover new token
+    function testMigrate_verifyFuture() public {
+        assertGt(migration.migrationExpiry(), block.timestamp);
+    }
+
+    function testMigrate_revertsAfterExpiry() public {
+        vm.warp(migration.migrationExpiry() + 1);
+
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
+        vm.stopPrank();
+    }
+
+    function testMigrate_succeedsAtExactExpiry() public {
+        vm.warp(migration.migrationExpiry());
+
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate(); // should not revert
+        vm.stopPrank();
+
+        assertEq(telcoinV3.balanceOf(user1), migration.getAmountOut(INITIAL_USER_BAL));
+    }
+
+    function testSetMigrationExpiry_success() public {
+        uint256 oldExpiry = migration.migrationExpiry();
+        uint256 newExpiry = oldExpiry + 180 days;
+
+        vm.expectEmit(true, true, true, true);
+        emit TokenMigration.MigrationExpirySet(oldExpiry, newExpiry);
+
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(TokenMigration.CannotRecoverProtectedToken.selector));
-        migration.recoverERC20(user1, address(telcoinV3));
+        migration.setMigrationExpiry(newExpiry);
+
+        assertEq(migration.migrationExpiry(), newExpiry);
+    }
+
+    function testSetMigrationExpiry_revertsIfZero() public {
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.InvalidExpiry.selector);
+        migration.setMigrationExpiry(0);
+    }
+
+    function testSetMigrationExpiry_revertsIfDecreased() public {
+        uint256 currentExpiry = migration.migrationExpiry();
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.InvalidExpiry.selector);
+        migration.setMigrationExpiry(currentExpiry - 1);
+    }
+
+    function testSetMigrationExpiry_revertsIfNonOwner() public {
+        uint256 expiry = migration.migrationExpiry();
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        migration.setMigrationExpiry(expiry + 1 days);
+    }
+
+    function testSetMigrationExpiry_thenMigrateRevertsAfterNewExpiry() public {
+        uint256 newExpiry = migration.migrationExpiry() + 90 days;
+        vm.prank(owner);
+        migration.setMigrationExpiry(newExpiry);
+
+        vm.warp(newExpiry + 1);
+
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
+        vm.stopPrank();
+    }
+
+    function testSetMigrationExpiry_thenMigrateSucceedsBeforeNewExpiry() public {
+        uint256 newExpiry = migration.migrationExpiry() + 90 days;
+        vm.prank(owner);
+        migration.setMigrationExpiry(newExpiry);
+
+        vm.warp(newExpiry - 1);
+
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        assertEq(telcoinV3.balanceOf(user1), migration.getAmountOut(INITIAL_USER_BAL));
     }
 }
