@@ -117,7 +117,30 @@ contract TokenMigrationTest is Test, Roles {
         uint256 expectedBurnBalance = currentBurnBalance + INITIAL_USER_BAL;
         assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), expectedBurnBalance);
 
+        // check totalOldTokenBurned tracking
+        assertEq(migration.totalOldTokenBurned(), INITIAL_USER_BAL);
+
         vm.stopPrank();
+    }
+
+    /// @dev Verifies totalOldTokenBurned accumulates correctly across multiple users.
+    function test_TotalOldTokenBurned_AccumulatesAcrossUsers() public {
+        assertEq(migration.totalOldTokenBurned(), 0);
+
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        assertEq(migration.totalOldTokenBurned(), INITIAL_USER_BAL);
+
+        vm.startPrank(user2);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        assertEq(migration.totalOldTokenBurned(), INITIAL_USER_BAL * 2);
+        assertEq(migration.totalOldTokenBurned() * migration.DECIMAL_MULTIPLIER(), migration.totalMigrated());
     }
 
     function test_PauseUnpause() public {
@@ -303,15 +326,14 @@ contract TokenMigrationTest is Test, Roles {
         vm.stopPrank();
     }
 
-    function test_Migrate_succeedsAtExactExpiry() public {
+    function test_Migrate_revertsAtExactExpiry() public {
         vm.warp(migration.migrationExpiry());
 
         vm.startPrank(user1);
         oldToken.approve(address(migration), INITIAL_USER_BAL);
-        migration.migrate(); // should not revert
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
         vm.stopPrank();
-
-        assertEq(telcoinV3.balanceOf(user1), migration.getAmountOut(INITIAL_USER_BAL));
     }
 
     function test_SetMigrationExpiry_success() public {
