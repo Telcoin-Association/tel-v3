@@ -54,10 +54,10 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev Constructor
      * @param _oldToken Address of the old oldToken token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
-     * @param _owner Owner address of this contract
+     * @param _initialOwner Owner address of this contract
      * @param _migrationDuration Duration of migration in seconds
      */
-    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationDuration) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _initialOwner, uint256 _migrationDuration) Ownable(_initialOwner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
         if (_oldToken == _telcoinV3) revert SameAddress();
         if (_migrationDuration == 0) revert InvalidExpiry();
@@ -73,7 +73,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @notice Migrates entire balance and sends oldToken to BURN_ADDRESS
      * @return amountNewToken Amount of tokens minted in response to migration
      */
-    function migrate() external whenNotPaused nonReentrant returns (uint256 amountNewToken) {
+    function migrate() external nonReentrant whenNotPaused returns (uint256 amountNewToken) {
         if (block.timestamp >= migrationExpiry) revert MigrationConcluded();
         // user must have sufficient balance
         uint256 userBalance = oldToken.balanceOf(msg.sender);
@@ -110,7 +110,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @param tokenAddress The address of the token to recover
      * @param amount Amount of tokens to recover from this contract
      */
-    function recoverERC20(address destination, address tokenAddress, uint256 amount) external nonReentrant onlyOwner {
+    function recoverERC20(address destination, address tokenAddress, uint256 amount) external onlyOwner nonReentrant {
         if (destination == address(0) || destination == BURN_ADDRESS || tokenAddress == address(0)) {
             revert ZeroAddress();
         }
