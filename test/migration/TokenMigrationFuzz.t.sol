@@ -313,7 +313,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
         // Should successfully recover random token
         vm.prank(owner);
-        migration.recoverERC20(recipient, address(randomToken));
+        migration.recoverERC20(recipient, address(randomToken), amount);
 
         assertEq(randomToken.balanceOf(recipient), amount);
         assertEq(randomToken.balanceOf(address(migration)), 0);

@@ -101,8 +101,9 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev This can only be done by the contract owner
      * @param destination The address to send the recovered tokens
      * @param tokenAddress The address of the token to recover
+     * @param amount Amount of tokens to recover from this contract
      */
-    function recoverERC20(address destination, address tokenAddress) external nonReentrant onlyOwner {
+    function recoverERC20(address destination, address tokenAddress, uint256 amount) external nonReentrant onlyOwner {
         if (destination == address(0) || destination == BURN_ADDRESS || tokenAddress == address(0)) {
             revert ZeroAddress();
         }
@@ -110,11 +111,11 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         // check balance
         IERC20Mintable tokenContract = IERC20Mintable(tokenAddress);
         uint256 balance = tokenContract.balanceOf(address(this));
-        if (balance == 0) revert InvalidAmount();
+        if (balance == 0 || amount == 0 || amount > balance) revert InvalidAmount();
 
         // transfer recovery amount
-        tokenContract.safeTransfer(destination, balance);
-        emit StuckTokensRecovered(tokenAddress, destination, balance);
+        tokenContract.safeTransfer(destination, amount);
+        emit StuckTokensRecovered(tokenAddress, destination, amount);
     }
 
     /**
