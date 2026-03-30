@@ -43,6 +43,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     error InvalidAmount();
     error InvalidExpiry();
     error ZeroAddress();
+    error SameAddress();
     error MigrationConcluded();
 
     /**
@@ -54,6 +55,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      */
     constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationDuration) Ownable(_owner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
+        if (_oldToken == _telcoinV3) revert SameAddress();
         if (_migrationDuration == 0) revert InvalidExpiry();
 
         oldToken = IERC20Mintable(_oldToken);

@@ -83,6 +83,12 @@ contract TokenMigrationTest is Test, Roles {
         deal(address(oldToken), user2, INITIAL_USER_BAL);
     }
 
+    /// @dev Verifies constructor reverts when _oldToken and _telcoinV3 are the same address.
+    function test_Constructor_RevertsWhenSameAddress() public {
+        vm.expectRevert(TokenMigration.SameAddress.selector);
+        new TokenMigration(address(telcoinV3), address(telcoinV3), owner, 365 days);
+    }
+
     function test_Migration() public {
         vm.startPrank(user1);
 
