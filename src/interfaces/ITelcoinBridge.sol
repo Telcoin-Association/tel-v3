@@ -16,6 +16,7 @@ interface ITelcoinBridge {
 
     error ZeroAmount();
     error ZeroAddress();
+    error CannotRenounceOwnership();
 
     // ~ Functions ~
 
