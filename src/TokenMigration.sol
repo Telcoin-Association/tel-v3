@@ -49,6 +49,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     error ZeroAddress();
     error SameAddress();
     error MigrationConcluded();
+    error CannotRenounceOwnership();
 
     /**
      * @dev Constructor
@@ -137,6 +138,13 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Disabled - renouncing ownership would permanently prevent pausing, expiry extension, and token recovery.
+     */
+    function renounceOwnership() public override onlyOwner {
+        revert CannotRenounceOwnership();
     }
 
     /**

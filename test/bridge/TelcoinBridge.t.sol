@@ -215,9 +215,9 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.rescueTokens(address(0), 100);
     }
 
-    // -------------------------
+    // ----------------------
     // Ownership Safety Tests
-    // -------------------------
+    // ----------------------
 
     /// @dev transferOwnership sets pendingOwner but does NOT change owner yet (two-step).
     function test_TransferOwnership_SetsPendingOwner() public {
