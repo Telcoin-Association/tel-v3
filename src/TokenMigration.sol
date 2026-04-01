@@ -10,7 +10,7 @@ import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 
 /**
  * @title TokenMigration
- * @author Telcoin Labs
+ * @author Telcoin Association
  * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate
  */
 contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {

@@ -11,7 +11,7 @@ import {ITelcoinBridge} from "./interfaces/ITelcoinBridge.sol";
 
 /**
  * @title TelcoinBridge
- * @author Telcoin Labs
+ * @author Telcoin Association
  * @notice LayerZero V2 bridge for TelcoinV3 cross-chain transfers
  * @dev Burns tokens on source chain, mints on destination chain
  */

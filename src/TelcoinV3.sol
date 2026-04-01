@@ -10,7 +10,7 @@ import {Roles} from "./helpers/Roles.sol";
 
 /**
  * @title TelcoinV3
- * @author Telcoin Labs
+ * @author Telcoin Association
  * @notice Telcoin ERC20 token with 18 decimals. Supports role-based minting/burning and pausable transfers.
  */
 contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnumerable {
