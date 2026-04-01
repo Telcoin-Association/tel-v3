@@ -52,7 +52,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
 
     /**
      * @dev Constructor
-     * @param _oldToken Address of the old oldToken token (2 decimals)
+     * @param _oldToken Address of the old TEL token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
      * @param _initialOwner Owner address of this contract
      * @param _migrationDuration Duration of migration in seconds

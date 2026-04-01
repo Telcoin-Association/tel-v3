@@ -141,11 +141,12 @@ migration.recoverERC20(destination, tokenAddress, amount)
 
 ## Security Considerations
 
-1. **Reentrancy Protection**: Contract uses OpenZeppelin's ReentrancyGuard
-2. **Pausable**: Owner can pause in case of emergency
+1. **Reentrancy Protection**: Migration and recovery functions use OpenZeppelin's ReentrancyGuard
+2. **Pausable**: Owner can pause migrations or bridging in case of emergency
 3. **Immutable Token Addresses**: Token addresses cannot be changed after deployment
-4. **Access Control**: Critical functions restricted to owner only
-5. **Safe Math**: Solidity 0.8+ automatic overflow protection
+4. **Two-Step Ownership**: Both contracts use Ownable2Step; ownership transfers require explicit acceptance by the new owner. `renounceOwnership()` is disabled on TelcoinBridge.
+5. **Access Control**: Critical functions restricted to owner or role holders
+6. **Safe Math**: Solidity 0.8+ automatic overflow protection
 
 ## Gas Estimates
 
@@ -247,7 +248,7 @@ $ anvil
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <RPC_URL> --private-key <PRIVATE_KEY>
+$ forge script script/DeployScript.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast --verify
 ```
 
 ### Cast

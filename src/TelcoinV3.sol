@@ -9,9 +9,9 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Roles} from "./helpers/Roles.sol";
 
 /**
- * @title Telcoin
+ * @title TelcoinV3
  * @author Telcoin Labs
- * @notice Telcoin V3
+ * @notice Telcoin ERC20 token with 18 decimals. Supports role-based minting/burning and pausable transfers.
  */
 contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnumerable {
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
@@ -19,7 +19,7 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
     error InvalidMintAmount();
 
     /**
-     * @dev Constructor that mints amount specified to the migration contract
+     * @dev Constructor that optionally mints an initial supply to the admin address
      * @param initialSupply_ The initial supply to mint on this chain. Tokens go to admin. Can be 0.
      * @param admin_ The owner (Telcoin TAO Governance Safe)
      */
@@ -48,7 +48,7 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
         _pause();
     }
 
-    /// @notice Unpauses all balance updates (transfers, mints, and burns)
+    /// @notice Resumes token transfers between non-zero addresses
     function unpause() public onlyRole(UNPAUSER_ROLE) {
         _unpause();
     }
