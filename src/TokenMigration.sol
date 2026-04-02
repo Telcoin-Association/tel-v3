@@ -5,7 +5,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 
 /**
@@ -13,7 +13,7 @@ import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
  * @author Telcoin Association
  * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate
  */
-contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
+contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     using SafeERC20 for IERC20Mintable;
 
     /// @dev TEL token addresses per chain
