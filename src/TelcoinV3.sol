@@ -3,22 +3,23 @@ pragma solidity ^0.8.26;
 
 import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Roles} from "./helpers/Roles.sol";
 
 /**
- * @title Telcoin
- * @author Telcoin Labs
- * @notice Telcoin V3
+ * @title TelcoinV3
+ * @author Telcoin Association
+ * @notice Telcoin ERC20 token with 18 decimals. Supports role-based minting/burning and pausable transfers.
  */
-contract TelcoinV3 is ERC20, Pausable, Roles, AccessControlEnumerable {
+contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnumerable {
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
 
     error InvalidMintAmount();
 
     /**
-     * @dev Constructor that mints amount specified to the migration contract
+     * @dev Constructor that optionally mints an initial supply to the admin address
      * @param initialSupply_ The initial supply to mint on this chain. Tokens go to admin. Can be 0.
      * @param admin_ The owner (Telcoin TAO Governance Safe)
      */
@@ -42,12 +43,12 @@ contract TelcoinV3 is ERC20, Pausable, Roles, AccessControlEnumerable {
         _burn(from, amount);
     }
 
-    /// @notice Pauses all transfers, mints, and burns
+    /// @notice Pauses token transfers between non-zero addresses. Mints and burns remain active.
     function pause() public onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
-    /// @notice Unpauses all balance updates (transfers, mints, and burns)
+    /// @notice Resumes token transfers between non-zero addresses
     function unpause() public onlyRole(UNPAUSER_ROLE) {
         _unpause();
     }

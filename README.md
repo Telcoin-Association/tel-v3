@@ -6,22 +6,37 @@ This project implements a migration system from OldToken (2 decimals) to Telcoin
 
 ## Contract Features
 
-### New Token
+### New Token (TelcoinV3)
 
 - ERC-20 compliant token with 18 decimals
 - Total supply: 100 billion tokens
-- Initial mint to migration contract upon deployment
+- Minted on demand by the migration contract (no pre-funding required)
+- Role-based access: `MINTER_ROLE`, `BURNER_ROLE`, `PAUSER_ROLE`, `UNPAUSER_ROLE`
+- Pause only blocks transfers between non-zero addresses; mints and burns remain active
 
 ### Migration Contract
 
 - **1:1 exchange rate** with automatic decimal conversion (2 → 18)
+- **Mint-based**: mints TelcoinV3 directly; does not hold a pre-funded token reserve
+- **Whole-balance migration**: `migrate()` exchanges the caller's entire OldToken balance in one call
+- **OldToken sent permanently to burn address** (0x000000000000000000000000000000000000dEaD)
 - **Pausable** by owner for emergency situations
-- **OldToken tokens locked permanently** in the contract after migration
+- **Time-bounded**: migrations revert at or after `migrationExpiry`
+- **Ownable2Step**: ownership transfers require acceptance by the new owner
 - **Owner functions:**
   - Pause/unpause migrations
-  - Withdraw remaining Telcoin V3 tokens
-  - Recover stuck OldToken tokens (optional emergency function)
-  - Recover other accidentally sent tokens
+  - Extend migration expiry via `setMigrationExpiry()`
+  - Recover accidentally sent tokens via `recoverERC20(destination, tokenAddress, amount)`
+
+### TelcoinBridge
+
+- LayerZero V2 OApp for cross-chain TelcoinV3 transfers
+- Burn-and-mint model: burns on source chain, mints on destination chain
+- **Ownable2Step**: ownership transfers require acceptance; `renounceOwnership()` is permanently disabled
+- **Owner functions:**
+  - Pause/unpause bridge
+  - Rescue accidentally sent tokens via `rescueTokens(token, amount)`
+  - Configure LayerZero delegate via `setDelegate()`
 
 ## Deployment Instructions
 
@@ -60,9 +75,10 @@ forge script script/DeployScript.s.sol:DeployWithCustomSalt --rpc-url $RPC_URL -
 
 After deployment, verify:
 
-1. Telcoin V3 total supply is 100B tokens (10^29 base units)
-2. Migration contract holds all Telcoin V3 tokens
-3. Migration contract has correct OldToken and Telcoin V3 addresses
+1. TelcoinV3 total supply matches chain allocation (up to 100B tokens, 10^29 base units)
+2. Migration contract has `MINTER_ROLE` on TelcoinV3
+3. Migration contract has correct OldToken and TelcoinV3 addresses
+4. `migrationExpiry` is set to the intended deadline
 
 ### Step 4: Test Migration (Optional)
 
@@ -80,16 +96,16 @@ forge script script/DeployScript.s.sol:DeployScript --rpc-url $TESTNET_RPC_URL -
 
 ### For Users
 
-1. **Approve** the migration contract to spend OldToken tokens
-2. **Call migrate()** with the amount of OldToken want to exchange
-3. **Receive** Telcoin V3 tokens automatically (amount × 10^16)
+1. **Approve** the migration contract to spend your entire OldToken balance
+2. **Call `migrate()`** — no arguments required; migrates your entire OldToken balance
+3. **Receive** TelcoinV3 tokens automatically (OldToken balance × 10^16)
 
 Example using Etherscan:
 
 1. Go to OldToken token contract
-2. Call `approve(migrationAddress, amount)`
+2. Call `approve(migrationAddress, yourFullBalance)`
 3. Go to Migration contract
-4. Call `migrate(amount)`
+4. Call `migrate()`
 
 ### For Owner/Admin
 
@@ -100,21 +116,16 @@ migration.pause() // Stop all migrations
 migration.unpause() // Resume migrations
 ```
 
-#### Withdraw Remaining Telcoin V3
-
-After migration period ends:
+#### Extend Migration Window
 
 ```solidity
-migration.withdrawRemainingTelcoinV3(treasuryAddress)
+migration.setMigrationExpiry(newTimestamp) // Must be greater than current expiry
 ```
 
-#### Recover Stuck Tokens
-
-If needed:
+#### Recover Accidentally Sent Tokens
 
 ```solidity
-migration.recoverStuckOldToken(recoveryAddress) // For OldToken
-migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
+migration.recoverERC20(destination, tokenAddress, amount)
 ```
 
 ## Key Calculations
@@ -130,11 +141,12 @@ migration.recoverOtherTokens(tokenAddress, recoveryAddress) // For other tokens
 
 ## Security Considerations
 
-1. **Reentrancy Protection**: Contract uses OpenZeppelin's ReentrancyGuard
-2. **Pausable**: Owner can pause in case of emergency
+1. **Reentrancy Protection**: Migration and recovery functions use OpenZeppelin's ReentrancyGuard
+2. **Pausable**: Owner can pause migrations or bridging in case of emergency
 3. **Immutable Token Addresses**: Token addresses cannot be changed after deployment
-4. **Access Control**: Critical functions restricted to owner only
-5. **Safe Math**: Solidity 0.8+ automatic overflow protection
+4. **Two-Step Ownership**: Both contracts use Ownable2Step; ownership transfers require explicit acceptance by the new owner. `renounceOwnership()` is disabled on TelcoinBridge.
+5. **Access Control**: Critical functions restricted to owner or role holders
+6. **Safe Math**: Solidity 0.8+ automatic overflow protection
 
 ## Gas Estimates
 
@@ -236,7 +248,7 @@ $ anvil
 ### Deploy
 
 ```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <RPC_URL> --private-key <PRIVATE_KEY>
+$ forge script script/DeployScript.s.sol:DeployScript --rpc-url <RPC_URL> --broadcast --verify
 ```
 
 ### Cast

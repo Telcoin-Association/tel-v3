@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
@@ -212,6 +213,61 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.prank(owner);
         vm.expectRevert(ITelcoinBridge.ZeroAddress.selector);
         bridgeA.rescueTokens(address(0), 100);
+    }
+
+    // ----------------------
+    // Ownership Safety Tests
+    // ----------------------
+
+    /// @dev transferOwnership sets pendingOwner but does NOT change owner yet (two-step).
+    function test_TransferOwnership_SetsPendingOwner() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        assertEq(bridgeA.pendingOwner(), newOwner);
+        assertEq(bridgeA.owner(), owner); // owner unchanged until accepted
+    }
+
+    /// @dev Ownership transfer completes only after the pending owner calls acceptOwnership().
+    function test_TransferOwnership_AcceptOwnership() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        vm.prank(newOwner);
+        bridgeA.acceptOwnership();
+
+        assertEq(bridgeA.owner(), newOwner);
+        assertEq(bridgeA.pendingOwner(), address(0));
+    }
+
+    /// @dev A non-pending-owner cannot call acceptOwnership().
+    function test_TransferOwnership_RevertNotPendingOwner() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        bridgeA.acceptOwnership();
+    }
+
+    /// @dev Only the current owner can initiate a transfer.
+    function test_TransferOwnership_RevertNotOwner() public {
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        bridgeA.transferOwnership(user1);
+    }
+
+    /// @dev renounceOwnership always reverts to prevent accidentally bricking the bridge.
+    function test_RenounceOwnership_Reverts() public {
+        vm.prank(owner);
+        vm.expectRevert(ITelcoinBridge.CannotRenounceOwnership.selector);
+        bridgeA.renounceOwnership();
     }
 
     // ---------------------

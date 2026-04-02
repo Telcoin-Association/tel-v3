@@ -5,15 +5,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 
 /**
  * @title TokenMigration
- * @author Telcoin Labs
+ * @author Telcoin Association
  * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate
  */
-contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
+contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     using SafeERC20 for IERC20Mintable;
 
     /// @dev TEL token addresses per chain
@@ -30,6 +30,10 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
 
+    /// @notice The total amount of old TEL burned via this contract,
+    /// denominated using the old token's 2 decimals
+    uint256 public totalOldTokenBurned;
+
     /// @notice The timestamp when migration has come to a conclusion. All attempts to migrate will
     /// revert if block.timestamp is beyond migrationExpiry.
     uint256 public migrationExpiry;
@@ -43,17 +47,20 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
     error InvalidAmount();
     error InvalidExpiry();
     error ZeroAddress();
+    error SameAddress();
     error MigrationConcluded();
+    error CannotRenounceOwnership();
 
     /**
      * @dev Constructor
-     * @param _oldToken Address of the old oldToken token (2 decimals)
+     * @param _oldToken Address of the old TEL token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
-     * @param _owner Owner address of this contract
+     * @param _initialOwner Owner address of this contract
      * @param _migrationDuration Duration of migration in seconds
      */
-    constructor(address _oldToken, address _telcoinV3, address _owner, uint256 _migrationDuration) Ownable(_owner) {
+    constructor(address _oldToken, address _telcoinV3, address _initialOwner, uint256 _migrationDuration) Ownable(_initialOwner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
+        if (_oldToken == _telcoinV3) revert SameAddress();
         if (_migrationDuration == 0) revert InvalidExpiry();
 
         oldToken = IERC20Mintable(_oldToken);
@@ -67,8 +74,8 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @notice Migrates entire balance and sends oldToken to BURN_ADDRESS
      * @return amountNewToken Amount of tokens minted in response to migration
      */
-    function migrate() external whenNotPaused nonReentrant returns (uint256 amountNewToken) {
-        if (block.timestamp > migrationExpiry) revert MigrationConcluded();
+    function migrate() external nonReentrant whenNotPaused returns (uint256 amountNewToken) {
+        if (block.timestamp >= migrationExpiry) revert MigrationConcluded();
         // user must have sufficient balance
         uint256 userBalance = oldToken.balanceOf(msg.sender);
         if (userBalance == 0) revert InvalidAmount();
@@ -76,6 +83,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         // convert from 2 decimals to 18 decimals
         amountNewToken = getAmountOut(userBalance);
         totalMigrated += amountNewToken;
+        totalOldTokenBurned += userBalance;
 
         // transfer oldToken from user to burn address (locked permanently)
         oldToken.safeTransferFrom(msg.sender, BURN_ADDRESS, userBalance);
@@ -101,8 +109,9 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      * @dev This can only be done by the contract owner
      * @param destination The address to send the recovered tokens
      * @param tokenAddress The address of the token to recover
+     * @param amount Amount of tokens to recover from this contract
      */
-    function recoverERC20(address destination, address tokenAddress) external nonReentrant onlyOwner {
+    function recoverERC20(address destination, address tokenAddress, uint256 amount) external onlyOwner {
         if (destination == address(0) || destination == BURN_ADDRESS || tokenAddress == address(0)) {
             revert ZeroAddress();
         }
@@ -110,11 +119,11 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
         // check balance
         IERC20Mintable tokenContract = IERC20Mintable(tokenAddress);
         uint256 balance = tokenContract.balanceOf(address(this));
-        if (balance == 0) revert InvalidAmount();
+        if (balance == 0 || amount == 0 || amount > balance) revert InvalidAmount();
 
         // transfer recovery amount
-        tokenContract.safeTransfer(destination, balance);
-        emit StuckTokensRecovered(tokenAddress, destination, balance);
+        tokenContract.safeTransfer(destination, amount);
+        emit StuckTokensRecovered(tokenAddress, destination, amount);
     }
 
     /**
@@ -129,6 +138,13 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuard {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Disabled - renouncing ownership would permanently prevent pausing, expiry extension, and token recovery.
+     */
+    function renounceOwnership() public override onlyOwner {
+        revert CannotRenounceOwnership();
     }
 
     /**

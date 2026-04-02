@@ -2,7 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {OApp, Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -11,11 +11,11 @@ import {ITelcoinBridge} from "./interfaces/ITelcoinBridge.sol";
 
 /**
  * @title TelcoinBridge
- * @author Telcoin Labs
+ * @author Telcoin Association
  * @notice LayerZero V2 bridge for TelcoinV3 cross-chain transfers
  * @dev Burns tokens on source chain, mints on destination chain
  */
-contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
+contract TelcoinBridge is ITelcoinBridge, OApp, Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
 
     // ~ Constants ~
@@ -143,5 +143,30 @@ contract TelcoinBridge is ITelcoinBridge, OApp, Pausable {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    // ~ Ownership ~
+
+    /**
+     * @notice Begin a two-step ownership transfer; new owner must call acceptOwnership().
+     * @dev Overrides both Ownable and Ownable2Step to resolve diamond inheritance.
+     */
+    function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) onlyOwner {
+        Ownable2Step.transferOwnership(newOwner);
+    }
+
+    /**
+     * @dev Internal hook called by acceptOwnership(); clears pendingOwner then sets owner.
+     * @dev Overrides both Ownable and Ownable2Step to resolve diamond inheritance.
+     */
+    function _transferOwnership(address newOwner) internal override(Ownable, Ownable2Step) {
+        Ownable2Step._transferOwnership(newOwner);
+    }
+
+    /**
+     * @notice Disabled — renouncing ownership would permanently brick pause, rescue, and delegate config.
+     */
+    function renounceOwnership() public override onlyOwner {
+        revert CannotRenounceOwnership();
     }
 }

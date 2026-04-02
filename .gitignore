@@ -9,7 +9,7 @@ broadcast
 .env
 
 # Misc
-lcov.info
+#lcov.info
 TODO.txt
 out.md
 Notes.txt

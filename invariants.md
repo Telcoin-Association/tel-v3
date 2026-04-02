@@ -33,18 +33,20 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 
 ### I1: Supply Conservation
 
-**Invariant**: The total circulating supply value remains constant during migration
+**Invariant**: The total whole-token count across v2 and v3 remains constant during migration
 
 ```
 ∀ time t:
-  circulating_supply_v2(t) * 10^2 + circulating_supply_v3(t) * 10^18
-  = INITIAL_TOTAL_SUPPLY * 10^2
+  whole_v2_remaining(t) + whole_v3_minted_via_migration(t) == INITIAL_TOTAL_SUPPLY_whole
+  i.e. (oldToken.totalSupply() - totalOldTokenBurned) / 1
+       + totalMigrated / DECIMAL_MULTIPLIER
+       == INITIAL_TOTAL_SUPPLY_whole
 ```
 
 **Properties**:
 
-- Total economic value is preserved
-- No token creation or destruction of value occurs
+- Total economic value is preserved (1 whole v2 == 1 whole v3 in value)
+- No token creation or destruction of value occurs through migration
 - Only decimal representation changes
 
 ### I2: Decimal Conversion Correctness
@@ -70,7 +72,7 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 ```
 ∀ user u, ∀ migration m:
   post(m): oldToken.balanceOf(BURN_ADDRESS) = pre(m).oldToken.balanceOf(BURN_ADDRESS) + amount
-  AND newToken.balanceOf(u) = pre(m).newToken.balanceOf(u) + (amount * DECIMAL_MULTIPLIER)
+  AND telcoinV3.balanceOf(u) = pre(m).telcoinV3.balanceOf(u) + (amount * DECIMAL_MULTIPLIER)
 ```
 
 **Properties**:
@@ -95,20 +97,20 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 - No partial migrations possible
 - Transaction reverts on any failure condition
 
-### I5: Balance Sufficiency
+### I5: Minter Role Requirement
 
-**Invariant**: Migration contract must have sufficient NewToken balance
+**Invariant**: The migration contract must hold `MINTER_ROLE` on TelcoinV3 for migrations to succeed
 
 ```
 ∀ migration m:
-  pre(m): newToken.balanceOf(migrationContract) ≥ requestedAmount * DECIMAL_MULTIPLIER
+  pre(m): telcoinV3.hasRole(MINTER_ROLE, migrationContract) == true
 ```
 
 **Properties**:
 
-- Migrations fail gracefully if insufficient NewToken available
-- Contract cannot promise tokens it doesn't possess
-- Explicit revert with `InsufficientContractBalance` error
+- Migration is mint-based; the contract holds no TelcoinV3 reserve
+- If `MINTER_ROLE` is revoked, all subsequent `migrate()` calls revert
+- Role is granted at deployment and managed by the TelcoinV3 `DEFAULT_ADMIN_ROLE`
 
 ---
 
@@ -119,17 +121,25 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 **Invariant**: Only authorized roles can perform privileged operations
 
 ```
-onlyOwner functions:
+onlyOwner functions (TokenMigration):
   - pause()
   - unpause()
-  - withdrawRemainingNewToken()
+  - setMigrationExpiry()
   - recoverERC20()
+
+onlyOwner functions (TelcoinBridge):
+  - pause()
+  - unpause()
+  - rescueTokens()
+  - setDelegate() (inherited from OApp)
+  - transferOwnership() / acceptOwnership()
 ```
 
 **Properties**:
 
 - Owner is initially set to governance multisig
-- Ownership transfers follow OpenZeppelin Ownable pattern
+- Both contracts use Ownable2Step: `transferOwnership()` sets a pending owner, transfer only finalizes when the new owner calls `acceptOwnership()`
+- `renounceOwnership()` is disabled on TelcoinBridge (reverts with `CannotRenounceOwnership`)
 - No backdoor or emergency functions bypass ownership
 
 ### S2: Pausability Safety
@@ -148,20 +158,21 @@ whenPaused → ∀ user u: migrate() reverts
 
 ### S3: Token Recovery Constraints
 
-**Invariant**: NewToken cannot be recovered via `recoverERC20`, but OldToken can be
+**Invariant**: `recoverERC20` can recover any token accidentally sent to the migration contract
 
 ```
 ∀ recoverERC20(dest, token, amount):
-  token == address(newToken) → revert CannotRecoverProtectedToken
-  token == address(oldToken) → transfer allowed
+  dest == address(0) OR dest == BURN_ADDRESS → revert ZeroAddress
+  token == address(0) → revert ZeroAddress
+  amount == 0 OR amount > balance → revert InvalidAmount
+  otherwise → transfer allowed
 ```
 
 **Properties**:
 
-- Prevents accidental recovery of migration reserves (NewToken)
-- Allows recovery of mistakenly sent OldTokens for user support
-- Recovered OldTokens can be migrated on behalf of users who made mistakes
-- `withdrawRemainingNewToken` is the only way to recover NewToken
+- Migration is mint-based; the contract holds no TelcoinV3 reserve, so recovery of TelcoinV3 is not a concern in normal operation
+- Allows recovery of mistakenly sent OldTokens or any other ERC20 for user support
+- Recovered OldTokens can be re-migrated on behalf of users who made mistakes
 - Support mechanism: governance can recover accidentally sent OldTokens and help users complete migration
 
 ### S4: User Authorization
@@ -213,20 +224,20 @@ whenPaused → ∀ user u: migrate() reverts
 - Burn address balance = total migrated old tokens
 - No mechanism to decrease burn address balance
 
-### F3: Contract Balance Monotonic Decrease
+### F3: Mint-Based Supply Expansion
 
-**Invariant**: Migration contract's NewToken balance only decreases (except initial funding)
+**Invariant**: Each successful migration increases TelcoinV3 total supply by exactly `userBalance * DECIMAL_MULTIPLIER`
 
 ```
-Post-deployment: ∀ time t1 < t2:
-  newToken.balanceOf(migrationContract, t2) ≤ newToken.balanceOf(migrationContract, t1)
+∀ migration m by user u with balance b:
+  post(m): telcoinV3.totalSupply() == pre(m).telcoinV3.totalSupply() + (b * DECIMAL_MULTIPLIER)
 ```
 
 **Properties**:
 
-- No minting capability in migration contract
-- Balance decreases through migrations or owner withdrawal
-- Predictable reserve depletion
+- Migration is mint-based; no pre-funded reserve is held or depleted
+- Total supply expansion is bounded by the circulating supply of OldToken
+- No mechanism within TokenMigration can decrease TelcoinV3 total supply
 
 ---
 
@@ -257,30 +268,30 @@ supply_ethereum + supply_polygon + supply_base = 100B * 10^18
 
 **Properties**:
 
-- Each chain's migration contract funded with predetermined amount
+- Each chain's TelcoinV3 is deployed with a chain-specific initial supply (minted to admin at construction)
 - Approximate distribution: Ethereum ~65B, Polygon ~30B, Base ~5B (subject to final adjustment)
-- Exact total supply of 100B TEL v3 maintained across all chains
-- No cross-chain double-spending possible
-- If one chain's migration contract depletes, users must bridge TEL v2 via native bridges to another chain
+- Total initial supply across all chains: 100B TEL v3
+- Migration contracts mint on demand; there is no per-contract reserve to deplete
+- No cross-chain double-spending possible; MINTER_ROLE is scoped per chain
 - Native bridges: Ethereum ↔ Polygon (native bridge), Ethereum ↔ Base (native bridge)
 
-### E3: Unclaimed Token Recovery
+### E3: Post-Expiry Governance Action
 
-**Invariant**: After migration period, unclaimed tokens recoverable by governance
+**Invariant**: After `migrationExpiry`, governance controls the migration contract and TelcoinV3 roles
 
 ```
 After migration_end_time:
-  governance can call withdrawRemainingNewToken()
-  to recover: newToken.balanceOf(migrationContract)
+  migrate() reverts for all callers
+  Governance may revoke MINTER_ROLE from migration contract on TelcoinV3
+  Any accidentally sent tokens in migration contract recoverable via recoverERC20()
 ```
 
 **Properties**:
 
-- Recovers value from lost/burned/unclaimed old tokens
-- Funds partially allocated to governance treasury
-- Some remainder reserved for extended claim period
+- No unclaimed TelcoinV3 sits in the migration contract (mint-based design)
+- Governance decides post-expiry fate of unclaimed OldToken value via off-chain policy
 - Approximately 1-year initial migration window (managed by Governance off-chain)
-- Governance multisig determines allocation between treasury and extended claims
+- Migration window can be extended before expiry via `setMigrationExpiry()`
 
 ---
 
@@ -288,18 +299,20 @@ After migration_end_time:
 
 ### ST1: State Consistency
 
-**Invariant**: Contract state remains internally consistent
+**Invariant**: Contract state variables remain internally consistent
 
 ```
 At any time t:
-  totalOldTokenBurned() * DECIMAL_MULTIPLIER ≤ initialNewTokenBalance - remainingNewTokenBalance()
+  totalMigrated == totalOldTokenBurned * DECIMAL_MULTIPLIER
+  oldToken.balanceOf(BURN_ADDRESS) >= totalOldTokenBurned
 ```
 
 **Properties**:
 
-- Burned tokens correspond to distributed new tokens
-- No state corruption possible
-- Verifiable through view functions
+- `totalOldTokenBurned` and `totalMigrated` are updated atomically within `migrate()`
+- Burned tokens correspond exactly to minted new tokens
+- No state corruption possible; ReentrancyGuard prevents concurrent state modification
+- Both values are public state variables, directly readable on-chain
 
 ### ST2: Event Emission
 
@@ -326,7 +339,7 @@ At any time t:
 
 ```
 oldToken == immutable address set at construction
-newToken == immutable address set at construction
+telcoinV3 == immutable address set at construction
 ```
 
 **Properties**:
@@ -432,12 +445,55 @@ User mistake flow:
 ### Mitigation Strategies
 
 1. **Clear Documentation**: Comprehensive user guides and warnings
-2. **Sufficient Funding**: Ensure migration contracts have adequate reserves
-3. **Monitoring**: Real-time tracking of migration progress and reserves
+2. **Role Management**: Ensure migration contract holds `MINTER_ROLE` on TelcoinV3 before launch; revoke post-expiry
+3. **Monitoring**: Real-time tracking of migration progress via `totalMigrated` and `totalOldTokenBurned`
 4. **Grace Period**: Consider extension mechanisms if needed
 5. **Support Channels**: Dedicated assistance for migration issues
 6. **Recovery Mechanism**: Governance can recover accidentally sent OldTokens to help users complete migration
-7. **Extended Claims**: Portion of unclaimed TEL v3 reserved for late claims after initial window
+7. **Extended Claims**: Governance may extend `migrationExpiry` before deadline or grant `MINTER_ROLE` to a new migration contract to support a late-claims period
+
+---
+
+---
+
+## TelcoinBridge Invariants
+
+### B1: Burn-Mint Conservation
+
+**Invariant**: Every outbound bridge call burns exactly `_amount` tokens; the matching inbound call mints exactly `_amount` tokens on the destination chain
+
+```
+∀ bridge(dstEid, to, amount, options):
+  telcoin.totalSupply() decreases by amount on source chain
+  telcoin.totalSupply() increases by amount on destination chain (upon delivery)
+```
+
+### B2: Peer Authorization
+
+**Invariant**: `_lzReceive` only processes messages from registered peers
+
+```
+∀ inbound message:
+  sender != peers[srcEid] → revert (enforced by LayerZero endpoint via _getPeerOrRevert)
+```
+
+### B3: Pausability
+
+**Invariant**: When paused, both `bridge()` and `_lzReceive()` revert
+
+```
+paused == true → bridge() reverts with EnforcedPause
+paused == true → _lzReceive() reverts with EnforcedPause (message enters retry queue)
+```
+
+### B4: Ownership Safety
+
+**Invariant**: Bridge ownership cannot be transferred in a single step or renounced
+
+```
+transferOwnership(newOwner) → sets pendingOwner; owner unchanged until acceptOwnership()
+renounceOwnership() → always reverts with CannotRenounceOwnership
+```
 
 ---
 
@@ -447,10 +503,10 @@ User mistake flow:
 
 1. Decimal conversion mathematics and overflow protection
 2. Reentrancy vulnerabilities in migration flow
-3. Access control implementation and ownership transfers
+3. Access control implementation and Ownable2Step ownership transfers
 4. Token recovery function restrictions
-5. Cross-chain deployment consistency
-6. **Code Review Note**: `recoverERC20` transfers entire balance instead of specified amount (line 135)
+5. Cross-chain deployment consistency (TelcoinBridge peer configuration)
+6. LayerZero V2 message delivery guarantees and retry behavior
 
 ### Medium Priority
 
