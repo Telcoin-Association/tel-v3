@@ -143,7 +143,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     /**
      * @notice Disabled - renouncing ownership would permanently prevent pausing, expiry extension, and token recovery.
      */
-    function renounceOwnership() public override onlyOwner {
+    function renounceOwnership() public view override onlyOwner {
         revert CannotRenounceOwnership();
     }
 
