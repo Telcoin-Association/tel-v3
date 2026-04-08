@@ -3,16 +3,12 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
-import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
-import {ITelcoinBridge} from "../../src/interfaces/ITelcoinBridge.sol";
+import {MintBurnWrapper} from "../../src/MintBurnWrapper.sol";
+import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
+import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 
-/**
- * @title TelcoinBridgeTest
- * @notice This test file is meant to verify the basic functions of the TelcoinBridge contract.
- */
 contract TelcoinBridgeTest is BaseSetup {
     function setUp() public override {
         super.setUp();
@@ -22,84 +18,60 @@ contract TelcoinBridgeTest is BaseSetup {
     // Initial State Tests
     // -------------------
 
-    /// @dev Verifies initial state of the TelcoinBridge contract.
     function test_Constructor() public view {
-        assertEq(address(bridgeA.telcoin()), address(telcoinA));
+        assertEq(bridgeA.token(), address(telcoinA));
+        assertEq(address(bridgeA.minterBurner()), address(wrapperA));
         assertEq(bridgeA.owner(), owner);
-        //assertEq(bridgeA.dstGasLimit(), 200_000);
-    }
-  
-    /// @dev Verifies initialization fails when _telcoin == address(0).
-    function test_Constructor_RevertsWhenTelcoinIsAddress0() public {
-        vm.expectRevert(ITelcoinBridge.ZeroAddress.selector);
-        new TelcoinBridge(
-            address(0),
-            address(endpointA),
-            owner
-        );
     }
 
     // ----------------
     // Round Trip Tests
     // ----------------
 
-    /// @dev Verifies a round trip bridging of tokens from chain A to chain B and back to chain A.
     function test_FullRoundTrip() public {
         uint256 bridgeAmount = 5000 ether;
         bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, bridgeAmount, options);
 
         // STEP 1: Bridge from A to B
         vm.startPrank(user1);
-        MessagingFee memory feeAtoB = bridgeA.quote(EID_B, user1, bridgeAmount, options);
-        MessagingReceipt memory receiptAtoB = bridgeA.bridge{value: feeAtoB.nativeFee}(
-            EID_B,
-            user1,
-            bridgeAmount,
-            options
-        );
+        MessagingFee memory feeAtoB = bridgeA.quoteSend(sendParam, false);
+        (MessagingReceipt memory receiptAtoB, ) = bridgeA.send{value: feeAtoB.nativeFee}(sendParam, feeAtoB, user1);
         vm.stopPrank();
 
-        // Verify burn on chain A
         assertEq(telcoinA.balanceOf(user1), USER_BALANCE - bridgeAmount);
 
-        // Simulate delivery on chain B using mock endpoint
+        // Simulate delivery on chain B
         endpointB.deliverPacket(
             EID_A,
             _addressToBytes32(address(bridgeA)),
-            1, // nonce
+            1,
             receiptAtoB.guid,
-            abi.encode(user1, bridgeAmount),
+            _encodeOFTMessage(user1, bridgeAmount),
             address(bridgeB)
         );
 
-        // Verify mint on chain B
         assertEq(telcoinB.balanceOf(user1), bridgeAmount);
 
         // STEP 2: Bridge back from B to A
+        SendParam memory sendParamBack = _createSendParam(EID_A, user1, bridgeAmount, options);
         vm.startPrank(user1);
-        MessagingFee memory feeBtoA = bridgeB.quote(EID_A, user1, bridgeAmount, options);
-        MessagingReceipt memory receiptBtoA = bridgeB.bridge{value: feeBtoA.nativeFee}(
-            EID_A,
-            user1,
-            bridgeAmount,
-            options
-        );
+        MessagingFee memory feeBtoA = bridgeB.quoteSend(sendParamBack, false);
+        (MessagingReceipt memory receiptBtoA, ) = bridgeB.send{value: feeBtoA.nativeFee}(sendParamBack, feeBtoA, user1);
         vm.stopPrank();
 
-        // Verify burn on chain B
         assertEq(telcoinB.balanceOf(user1), 0);
 
         // Simulate delivery on chain A
         endpointA.deliverPacket(
             EID_B,
             _addressToBytes32(address(bridgeB)),
-            1, // nonce
+            1,
             receiptBtoA.guid,
-            abi.encode(user1, bridgeAmount),
+            _encodeOFTMessage(user1, bridgeAmount),
             address(bridgeA)
         );
 
-        // Verify mint on chain A - back to original balance
         assertEq(telcoinA.balanceOf(user1), USER_BALANCE);
     }
 
@@ -107,26 +79,22 @@ contract TelcoinBridgeTest is BaseSetup {
     // Quote Tests
     // -----------
 
-    /// @dev Verifies the quote method returns the intended values.
     function test_Quote() public view {
         bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, options);
 
-        MessagingFee memory fee = bridgeA.quote(EID_B, user1, 1000, options);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
 
-        // Fee should be non-zero (mock returns 0.001 ether)
         assertEq(fee.nativeFee, 0.001 ether);
         assertEq(fee.lzTokenFee, 0);
     }
 
-    /// @dev Verifies the quote method returns the intended fees with different amounts.
     function test_Quote_DifferentAmountsSameFee() public view {
         bytes memory options = _createBasicOptions();
 
-        // Quote for different amounts - fee should be the same since payload size is same
-        MessagingFee memory fee1 = bridgeA.quote(EID_B, user1, 1000, options);
-        MessagingFee memory fee2 = bridgeA.quote(EID_B, user1, 1_000_000, options);
+        MessagingFee memory fee1 = bridgeA.quoteSend(_createSendParam(EID_B, user1, 1000 ether, options), false);
+        MessagingFee memory fee2 = bridgeA.quoteSend(_createSendParam(EID_B, user1, 1_000_000 ether, options), false);
 
-        // Fees should be equal (same payload structure)
         assertEq(fee1.nativeFee, fee2.nativeFee);
     }
 
@@ -134,35 +102,26 @@ contract TelcoinBridgeTest is BaseSetup {
     // Permissioned Functions Tests
     // ----------------------------
 
-    // ~ pause/unpause ~
-
-    /// @dev Verifies TelcoinBridge::pause results in the expected state changes.
     function test_Pause() public {
         vm.prank(owner);
         bridgeA.pause();
-
         assertTrue(bridgeA.paused());
     }
 
-    /// @dev Verifies TelcoinBridge::pause can only be called by the owner.
     function test_Pause_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         bridgeA.pause();
     }
 
-    /// @dev Verifies TelcoinBridge::unpause results in the expected state changes.
     function test_Unpause() public {
         vm.startPrank(owner);
         bridgeA.pause();
-        assertTrue(bridgeA.paused());
-
         bridgeA.unpause();
         assertFalse(bridgeA.paused());
         vm.stopPrank();
     }
 
-    /// @dev Verifies TelcoinBridge::unpause can only be called by the owner.
     function test_Unpause_RevertNotOwner() public {
         vm.prank(owner);
         bridgeA.pause();
@@ -172,21 +131,13 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.unpause();
     }
 
-    // ~ rescueTokens ~
-
-    /// @dev Verifies TelcoinBridge::rescueTokens results in the expected state changes.
     function test_RescueTokens() public {
-        // Send some tokens to the bridge accidentally
         uint256 stuckAmount = 100 ether;
         vm.prank(user1);
         telcoinA.transfer(address(bridgeA), stuckAmount);
 
-        uint256 bridgeBalanceBefore = telcoinA.balanceOf(address(bridgeA));
         uint256 ownerBalanceBefore = telcoinA.balanceOf(owner);
 
-        assertEq(bridgeBalanceBefore, stuckAmount);
-
-        // Rescue tokens
         vm.prank(owner);
         bridgeA.rescueTokens(address(telcoinA), stuckAmount);
 
@@ -194,43 +145,25 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(telcoinA.balanceOf(owner), ownerBalanceBefore + stuckAmount);
     }
 
-    /// @dev Verifies TelcoinBridge::rescueTokens can only be called by the owner.
     function test_RescueTokens_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         bridgeA.rescueTokens(address(telcoinA), 100);
     }
 
-    /// @dev Verifies TelcoinBridge::rescueTokens reverts if amount == 0.
-    function test_RescueTokens_RevertZeroAmount() public {
-        vm.prank(owner);
-        vm.expectRevert(ITelcoinBridge.ZeroAmount.selector);
-        bridgeA.rescueTokens(address(telcoinA), 0);
-    }
-
-    /// @dev Verifies TelcoinBridge::rescueTokens reverts if token == address(0).
-    function test_RescueTokens_RevertZeroAddress() public {
-        vm.prank(owner);
-        vm.expectRevert(ITelcoinBridge.ZeroAddress.selector);
-        bridgeA.rescueTokens(address(0), 100);
-    }
-
     // ----------------------
     // Ownership Safety Tests
     // ----------------------
 
-    /// @dev transferOwnership sets pendingOwner but does NOT change owner yet (two-step).
     function test_TransferOwnership_SetsPendingOwner() public {
         address newOwner = makeAddr("newOwner");
-
         vm.prank(owner);
         bridgeA.transferOwnership(newOwner);
 
         assertEq(bridgeA.pendingOwner(), newOwner);
-        assertEq(bridgeA.owner(), owner); // owner unchanged until accepted
+        assertEq(bridgeA.owner(), owner);
     }
 
-    /// @dev Ownership transfer completes only after the pending owner calls acceptOwnership().
     function test_TransferOwnership_AcceptOwnership() public {
         address newOwner = makeAddr("newOwner");
 
@@ -244,7 +177,6 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(bridgeA.pendingOwner(), address(0));
     }
 
-    /// @dev A non-pending-owner cannot call acceptOwnership().
     function test_TransferOwnership_RevertNotPendingOwner() public {
         address newOwner = makeAddr("newOwner");
 
@@ -256,100 +188,148 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.acceptOwnership();
     }
 
-    /// @dev Only the current owner can initiate a transfer.
     function test_TransferOwnership_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         bridgeA.transferOwnership(user1);
     }
 
-    /// @dev renounceOwnership always reverts to prevent accidentally bricking the bridge.
     function test_RenounceOwnership_Reverts() public {
         vm.prank(owner);
-        vm.expectRevert(ITelcoinBridge.CannotRenounceOwnership.selector);
+        vm.expectRevert(TelcoinBridge.CannotRenounceOwnership.selector);
         bridgeA.renounceOwnership();
     }
 
+    // ----------------------
+    // MintBurnWrapper Tests
+    // ----------------------
+
+    function test_Wrapper_RevertUnauthorizedMint() public {
+        vm.prank(user1);
+        vm.expectRevert(MintBurnWrapper.UnauthorizedBridge.selector);
+        wrapperA.mint(user1, 1 ether);
+    }
+
+    function test_Wrapper_RevertUnauthorizedBurn() public {
+        vm.prank(user1);
+        vm.expectRevert(MintBurnWrapper.UnauthorizedBridge.selector);
+        wrapperA.burn(user1, 1 ether);
+    }
+
+    function test_Wrapper_RevokeBridge_BlocksMint() public {
+        vm.prank(owner);
+        wrapperA.revokeBridge(address(bridgeA));
+
+        assertFalse(wrapperA.authorizedBridges(address(bridgeA)));
+
+        bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, options);
+
+        vm.startPrank(user1);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
+        vm.expectRevert();
+        bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
+        vm.stopPrank();
+    }
+
+    function test_Wrapper_RevokeBridge_EmitsEvent() public {
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, false);
+        emit MintBurnWrapper.BridgeRevoked(address(bridgeA));
+        wrapperA.revokeBridge(address(bridgeA));
+    }
+
+    function test_Wrapper_AuthorizeBridge_EmitsEvent() public {
+        address newBridge = makeAddr("newBridge");
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, false);
+        emit MintBurnWrapper.BridgeAuthorized(newBridge);
+        wrapperA.authorizeBridge(newBridge);
+    }
+
+    function test_Wrapper_AuthorizeBridge_RevertZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(MintBurnWrapper.ZeroAddress.selector);
+        wrapperA.authorizeBridge(address(0));
+    }
+
+    function test_Wrapper_Constructor_RevertZeroToken() public {
+        vm.expectRevert(MintBurnWrapper.ZeroAddress.selector);
+        new MintBurnWrapper(address(0), owner);
+    }
+
+    function test_Wrapper_RenounceOwnership_Reverts() public {
+        vm.prank(owner);
+        vm.expectRevert(MintBurnWrapper.CannotRenounceOwnership.selector);
+        wrapperA.renounceOwnership();
+    }
+
     // ---------------------
-    // Interchangable Bridge
+    // Interchangeable Bridge
     // ---------------------
 
-    /// @dev Verifies the interchangeable "plug and play" architecture of the TelcoinV3 + TelcoinBridge contracts.
-    /// Disconnects the old bridge contract, deploys and connects a new bridge contract, and verifies usage.
+    /// @dev Verifies the interchangeable architecture: swapping bridges only requires
+    ///      updating the wrapper's authorized bridges — no TelcoinV3 role changes needed.
     function test_BridgeIsInterchangeable() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, bridgeAmount, options);
 
         uint256 preBalUser1 = telcoinA.balanceOf(user1);
         uint256 preSupply = telcoinA.totalSupply();
 
-        // STEP 1: Perform a successful bridge with the original bridgeA
+        // STEP 1: Successful send with original bridgeA
         vm.startPrank(user1);
-        MessagingFee memory fee = bridgeA.quote(EID_B, user1, bridgeAmount, options);
-        bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, bridgeAmount, options);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
+        bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
         vm.stopPrank();
 
-        // Verify tokens were burned
         assertEq(telcoinA.balanceOf(user1), preBalUser1 - bridgeAmount);
         assertEq(telcoinA.totalSupply(), preSupply - bridgeAmount);
 
-        // STEP 2: Deploy a new bridge contract (simulating an upgrade or provider switch)
+        // STEP 2: Deploy new bridge, swap it in on the wrapper (no TelcoinV3 role changes)
         vm.startPrank(owner);
         TelcoinBridge newBridgeA = new TelcoinBridge(
             address(telcoinA),
+            IMintableBurnable(address(wrapperA)),
             address(endpointA),
             owner
         );
-
-        // STEP 3: Revoke old bridge and grant new bridge mint/burn roles
-        telcoinA.revokeRole(MINTER_ROLE, address(bridgeA));
-        telcoinA.revokeRole(BURNER_ROLE, address(bridgeA));
-        telcoinA.grantRole(MINTER_ROLE, address(newBridgeA));
-        telcoinA.grantRole(BURNER_ROLE, address(newBridgeA));
-
-        // Setup peer for the new bridge
+        wrapperA.revokeBridge(address(bridgeA));
+        wrapperA.authorizeBridge(address(newBridgeA));
         newBridgeA.setPeer(EID_B, _addressToBytes32(address(bridgeB)));
-
-        // Update bridgeB to recognize the new bridgeA as a peer
         bridgeB.setPeer(EID_A, _addressToBytes32(address(newBridgeA)));
         vm.stopPrank();
 
-        // STEP 4: Verify old bridge can NO LONGER bridge
+        // STEP 3: Old bridge can NO LONGER send (wrapper rejects the burn)
         vm.startPrank(user1);
-        fee = bridgeA.quote(EID_B, user1, bridgeAmount, options);
+        fee = bridgeA.quoteSend(sendParam, false);
         vm.expectRevert();
-        bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, bridgeAmount, options);
+        bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
         vm.stopPrank();
 
         preBalUser1 = telcoinA.balanceOf(user1);
         preSupply = telcoinA.totalSupply();
 
-        // STEP 5: Verify NEW bridge CAN bridge successfully
+        // STEP 4: New bridge CAN send
         vm.startPrank(user1);
-        fee = newBridgeA.quote(EID_B, user1, bridgeAmount, options);
-        MessagingReceipt memory receipt = newBridgeA.bridge{value: fee.nativeFee}(
-            EID_B,
-            user1,
-            bridgeAmount,
-            options
-        );
+        fee = newBridgeA.quoteSend(sendParam, false);
+        (MessagingReceipt memory receipt, ) = newBridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
         vm.stopPrank();
 
-        // Verify tokens were burned via the new bridge
         assertEq(telcoinA.balanceOf(user1), preBalUser1 - bridgeAmount);
         assertEq(telcoinA.totalSupply(), preSupply - bridgeAmount);
 
-        // STEP 6: Verify receiving still works on chain B from the new bridge
+        // STEP 5: Receiving on chain B still works from the new bridge
         endpointB.deliverPacket(
             EID_A,
             _addressToBytes32(address(newBridgeA)),
             1,
             receipt.guid,
-            abi.encode(user1, bridgeAmount),
+            _encodeOFTMessage(user1, bridgeAmount),
             address(bridgeB)
         );
 
-        // Verify mint on chain B
         assertEq(telcoinB.balanceOf(user1), bridgeAmount);
     }
 }

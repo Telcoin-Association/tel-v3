@@ -1,172 +1,109 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {OApp, Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {MintBurnOFTAdapter} from "@layerzerolabs/oft-evm/contracts/MintBurnOFTAdapter.sol";
+import {OFTMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
+import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
+import {Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
-import {ITelcoinBridge} from "./interfaces/ITelcoinBridge.sol";
 
 /**
  * @title TelcoinBridge
  * @author Telcoin Association
- * @notice LayerZero V2 bridge for TelcoinV3 cross-chain transfers
- * @dev Burns tokens on source chain, mints on destination chain
+ * @notice LayerZero V2 OFT-compatible bridge for TelcoinV3 cross-chain transfers.
+ * @dev Inherits MintBurnOFTAdapter unmodified. Mint and burn are delegated to MintBurnWrapper
+ *      (the minterBurner) which holds MINTER_ROLE and BURNER_ROLE on TelcoinV3, decoupling
+ *      bridge upgrades from token role management.
+ *
+ *      Compatible with NativeOFTAdapter deployed on TelcoinNetwork where TEL is the native
+ *      gas token — both use OFTMsgCodec for message encoding.
+ *
+ *      Use send() and quoteSend() from OFTCore for all bridging operations.
+ *
+ *      sharedDecimals defaults to 6, giving a decimalConversionRate of 1e12 against TEL's
+ *      18 local decimals. Amounts are rounded to the nearest 1e-6 TEL (dust) before send.
+ *      Max transferable per message: uint64.max * 1e12 ~= 18.4 trillion TEL.
  */
-contract TelcoinBridge is ITelcoinBridge, OApp, Ownable2Step, Pausable {
+contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
+    using OFTMsgCodec for bytes;
+    using OFTMsgCodec for bytes32;
 
-    // ~ Constants ~
+    // ~ Errors ~
 
-    /// @notice The TelcoinV3 token contract
-    IERC20Mintable public immutable telcoin;
+    error CannotRenounceOwnership();
 
     // ~ Constructor ~
 
     /**
-     * @notice Constructor
-     * @param _telcoin The TelcoinV3 token address
+     * @param _token The TelcoinV3 token address
+     * @param _minterBurner The MintBurnWrapper address (holds MINTER_ROLE/BURNER_ROLE on TelcoinV3)
      * @param _endpoint The local LayerZero endpoint address
      * @param _delegate The delegate/owner address for OApp configuration
      */
     constructor(
-        address _telcoin,
+        address _token,
+        IMintableBurnable _minterBurner,
         address _endpoint,
         address _delegate
-    ) OApp(_endpoint, _delegate) Ownable(_delegate) {
-        if (_telcoin == address(0)) revert ZeroAddress();
-        telcoin = IERC20Mintable(_telcoin);
-    }
+    ) MintBurnOFTAdapter(_token, _minterBurner, _endpoint, _delegate) Ownable(_delegate) {}
 
-    // ~ Core Methods ~
+    // ~ OFTCore Overrides ~
 
     /**
-     * @notice Bridge tokens to another chain
-     * @param _dstEid Destination chain endpoint ID
-     * @param _to Recipient address on destination chain
-     * @param _amount Amount of tokens to bridge
-     * @param _options LayerZero executor options (gas, etc.)
-     * @return receipt The LayerZero messaging receipt
+     * @notice Pauses the bridge — blocks send and receive.
+     * @dev Overrides OFTCore.send() to enforce pausability on the standard OFT entry point.
      */
-    function bridge(
-        uint32 _dstEid,
-        address _to,
-        uint256 _amount,
-        bytes calldata _options
-    ) external payable whenNotPaused returns (MessagingReceipt memory receipt) {
-        if (_amount == 0) revert ZeroAmount();
-        if (_to == address(0)) revert ZeroAddress();
-
-        // Burn tokens from sender
-        telcoin.burn(msg.sender, _amount);
-
-        // Encode message payload
-        bytes memory payload = abi.encode(_to, _amount);
-
-        // Send cross-chain message
-        receipt = _lzSend(
-            _dstEid,
-            payload,
-            _options,
-            MessagingFee({nativeFee: msg.value, lzTokenFee: 0}),
-            msg.sender // refund address
-        );
-
-        emit BridgeSent(receipt.guid, _dstEid, msg.sender, _to, _amount);
+    function send(
+        SendParam calldata _sendParam,
+        MessagingFee calldata _fee,
+        address _refundAddress
+    ) external payable override whenNotPaused returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
+        return _send(_sendParam, _fee, _refundAddress);
     }
 
     /**
-     * @notice Quote the fee for bridging tokens
-     * @param _dstEid Destination chain endpoint ID
-     * @param _to Recipient address on destination chain
-     * @param _amount Amount of tokens to bridge
-     * @param _options LayerZero executor options
-     * @return fee The estimated messaging fee
-     */
-    function quote(
-        uint32 _dstEid,
-        address _to,
-        uint256 _amount,
-        bytes calldata _options
-    ) external view returns (MessagingFee memory fee) {
-        bytes memory payload = abi.encode(_to, _amount);
-        return _quote(_dstEid, payload, _options, false);
-    }
-
-    /**
-     * @notice Internal handler for receiving cross-chain messages
-     * @param _origin Origin information (source chain, sender, nonce)
-     * @param _guid Global unique identifier for the message
-     * @param _message Encoded payload (recipient, amount)
+     * @dev Enforces pausability on inbound messages and emits BridgeReceived for indexing.
      */
     function _lzReceive(
         Origin calldata _origin,
         bytes32 _guid,
         bytes calldata _message,
-        address /*_executor*/,
-        bytes calldata /*_extraData*/
+        address _executor,
+        bytes calldata _extraData
     ) internal whenNotPaused override {
-        // Decode payload
-        (address to, uint256 amount) = abi.decode(_message, (address, uint256));
-
-        // Mint tokens to recipient
-        telcoin.mint(to, amount);
-
-        emit BridgeReceived(_guid, _origin.srcEid, to, amount);
+        super._lzReceive(_origin, _guid, _message, _executor, _extraData);
     }
 
     // ~ Permissioned Methods ~
 
     /**
-     * @notice Rescue ERC20 tokens accidentally sent to this contract
-     * @param _token The token address to rescue
-     * @param _amount The amount to rescue
+     * @notice Rescue ERC20 tokens accidentally sent to this contract.
      */
     function rescueTokens(address _token, uint256 _amount) external onlyOwner {
-        if (_amount == 0) revert ZeroAmount();
-        if (_token == address(0)) revert ZeroAddress();
-
         IERC20(_token).safeTransfer(msg.sender, _amount);
     }
 
-    /**
-     * @notice Pause the bridge
-     */
-    function pause() external onlyOwner {
-        _pause();
-    }
+    function pause() external onlyOwner { _pause(); }
 
-    /**
-     * @notice Unpause the bridge
-     */
-    function unpause() external onlyOwner {
-        _unpause();
-    }
+    function unpause() external onlyOwner { _unpause(); }
 
     // ~ Ownership ~
 
-    /**
-     * @notice Begin a two-step ownership transfer; new owner must call acceptOwnership().
-     * @dev Overrides both Ownable and Ownable2Step to resolve diamond inheritance.
-     */
     function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) onlyOwner {
         Ownable2Step.transferOwnership(newOwner);
     }
 
-    /**
-     * @dev Internal hook called by acceptOwnership(); clears pendingOwner then sets owner.
-     * @dev Overrides both Ownable and Ownable2Step to resolve diamond inheritance.
-     */
     function _transferOwnership(address newOwner) internal override(Ownable, Ownable2Step) {
         Ownable2Step._transferOwnership(newOwner);
     }
 
-    /**
-     * @notice Disabled — renouncing ownership would permanently brick pause, rescue, and delegate config.
-     */
-    function renounceOwnership() public override onlyOwner {
+    /// @notice Disabled — renouncing ownership would permanently brick pause, rescue, and delegate config.
+    function renounceOwnership() public view override onlyOwner {
         revert CannotRenounceOwnership();
     }
 }

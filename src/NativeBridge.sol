@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {MintBurnOFTAdapter} from "@layerzerolabs/oft-evm/contracts/MintBurnOFTAdapter.sol";
-import {OFTMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTMsgCodec.sol";
-import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
+import {NativeOFTAdapter} from "@layerzerolabs/oft-evm/contracts/NativeOFTAdapter.sol";
 import {Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
@@ -12,62 +10,62 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
- * @title TelcoinBridge
+ * @title NativeBridge
  * @author Telcoin Association
- * @notice LayerZero V2 OFT-compatible bridge for TelcoinV3 cross-chain transfers.
- * @dev Inherits MintBurnOFTAdapter unmodified. Mint and burn are delegated to MintBurnWrapper
- *      (the minterBurner) which holds MINTER_ROLE and BURNER_ROLE on TelcoinV3, decoupling
- *      bridge upgrades from token role management.
+ * @notice LayerZero V2 OFT-compatible bridge deployed on TelcoinNetwork where TEL is the native
+ *         gas token. Locks native TEL when bridging out to satellite chains; credits native TEL
+ *         to recipients when messages arrive from satellite chains.
  *
- *      Compatible with NativeOFTAdapter deployed on TelcoinNetwork where TEL is the native
- *      gas token — both use OFTMsgCodec for message encoding.
+ * @dev Inherits NativeOFTAdapter unmodified. Compatible with TelcoinBridge (MintBurnOFTAdapter)
+ *      on satellite chains — both use OFTMsgCodec for message encoding.
  *
- *      Use send() and quoteSend() from OFTCore for all bridging operations.
+ *      WARNING: Only one NativeBridge should exist across the entire OFT mesh.
  *
- *      sharedDecimals defaults to 6, giving a decimalConversionRate of 1e12 against TEL's
- *      18 local decimals. Amounts are rounded to the nearest 1e-6 TEL (dust) before send.
+ *      sharedDecimals defaults to 6, matching the satellite chain TelcoinBridge configuration.
+ *      decimalConversionRate = 1e12 (localDecimals=18, sharedDecimals=6).
  *      Max transferable per message: uint64.max * 1e12 ~= 18.4 trillion TEL.
  */
-contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
+contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
-    using OFTMsgCodec for bytes;
-    using OFTMsgCodec for bytes32;
 
     // ~ Errors ~
 
+    error WithdrawFailed();
     error CannotRenounceOwnership();
 
     // ~ Constructor ~
 
     /**
-     * @param _token The TelcoinV3 token address
-     * @param _minterBurner The MintBurnWrapper address (holds MINTER_ROLE/BURNER_ROLE on TelcoinV3)
      * @param _endpoint The local LayerZero endpoint address
      * @param _delegate The delegate/owner address for OApp configuration
      */
     constructor(
-        address _token,
-        IMintableBurnable _minterBurner,
         address _endpoint,
         address _delegate
-    ) MintBurnOFTAdapter(_token, _minterBurner, _endpoint, _delegate) Ownable(_delegate) {}
+    ) NativeOFTAdapter(18, _endpoint, _delegate) Ownable(_delegate) {}
 
-    // ~ OFTCore Overrides ~
+    // ~ Receive ~
+
+    /// @notice Allows direct funding of the adapter's native TEL reserve.
+    receive() external payable {}
+
+    // ~ NativeOFTAdapter Overrides ~
 
     /**
      * @notice Pauses the bridge — blocks send and receive.
-     * @dev Overrides OFTCore.send() to enforce pausability on the standard OFT entry point.
+     * @dev Overrides NativeOFTAdapter.send() to enforce pausability. Delegates to super
+     *      which validates msg.value == fee + amount before executing the send.
      */
     function send(
         SendParam calldata _sendParam,
         MessagingFee calldata _fee,
         address _refundAddress
-    ) external payable override whenNotPaused returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
-        return _send(_sendParam, _fee, _refundAddress);
+    ) public payable override whenNotPaused returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
+        return super.send(_sendParam, _fee, _refundAddress);
     }
 
     /**
-     * @dev Enforces pausability on inbound messages and emits BridgeReceived for indexing.
+     * @dev Enforces pausability on inbound messages.
      */
     function _lzReceive(
         Origin calldata _origin,
@@ -80,6 +78,17 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     }
 
     // ~ Permissioned Methods ~
+
+    /**
+     * @notice Withdraw native TEL from the adapter reserve.
+     * @dev The adapter accumulates native TEL as users bridge out to satellite chains.
+     *      Owner can withdraw at any time, e.g. to rebalance reserves cross-chain.
+     * @param _amount Amount of native TEL to withdraw in wei
+     */
+    function withdrawNative(uint256 _amount) external onlyOwner {
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
+        if (!success) revert WithdrawFailed();
+    }
 
     /**
      * @notice Rescue ERC20 tokens accidentally sent to this contract.
@@ -102,8 +111,8 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
         Ownable2Step._transferOwnership(newOwner);
     }
 
-    /// @notice Disabled — renouncing ownership would permanently brick pause, rescue, and delegate config.
-    function renounceOwnership() public view override onlyOwner {
+    /// @notice Disabled — renouncing ownership would permanently brick pause and withdraw.
+    function renounceOwnership() public override onlyOwner {
         revert CannotRenounceOwnership();
     }
 }

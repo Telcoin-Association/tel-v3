@@ -2,6 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -14,6 +16,8 @@ import {Roles} from "./helpers/Roles.sol";
  * @notice Telcoin ERC20 token with 18 decimals. Supports role-based minting/burning and pausable transfers.
  */
 contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnumerable {
+    using SafeERC20 for IERC20;
+
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
 
     error InvalidMintAmount();
@@ -51,6 +55,11 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
     /// @notice Resumes token transfers between non-zero addresses
     function unpause() public onlyRole(UNPAUSER_ROLE) {
         _unpause();
+    }
+
+    /// @notice Rescue ERC20 tokens accidentally sent to this contract.
+    function rescueTokens(address _token, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        IERC20(_token).safeTransfer(msg.sender, _amount);
     }
 
     // --------

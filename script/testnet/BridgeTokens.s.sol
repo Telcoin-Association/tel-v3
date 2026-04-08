@@ -6,6 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {DeployUtility} from "../utils/DeployUtility.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import "../utils/Constants.sol";
 
 /**
@@ -142,7 +143,16 @@ contract BridgeTokens is DeployUtility {
         console.log("");
 
         // Get quote for the bridge transaction
-        MessagingFee memory fee = bridge.quote(dst.eid, _deployer, BRIDGE_AMOUNT, options);
+        SendParam memory sendParam = SendParam({
+            dstEid: dst.eid,
+            to: bytes32(uint256(uint160(_deployer))),
+            amountLD: BRIDGE_AMOUNT,
+            minAmountLD: 0,
+            extraOptions: options,
+            composeMsg: bytes(""),
+            oftCmd: bytes("")
+        });
+        MessagingFee memory fee = bridge.quoteSend(sendParam, false);
 
         console.log("LayerZero Fee (native):", fee.nativeFee);
         console.log("LayerZero Fee (lzToken):", fee.lzTokenFee);
@@ -160,13 +170,8 @@ contract BridgeTokens is DeployUtility {
         vm.startBroadcast(_pk);
 
         // Execute bridge
-        console.log("Calling bridge()...");
-        MessagingReceipt memory receipt = bridge.bridge{value: fee.nativeFee}(
-            dst.eid,
-            _deployer, // Send to same address on destination
-            BRIDGE_AMOUNT,
-            options
-        );
+        console.log("Calling send()...");
+        (MessagingReceipt memory receipt, ) = bridge.send{value: fee.nativeFee}(sendParam, fee, _deployer);
 
         vm.stopBroadcast();
 
