@@ -133,13 +133,31 @@ onlyOwner functions (TelcoinBridge):
   - rescueTokens()
   - setDelegate() (inherited from OApp)
   - transferOwnership() / acceptOwnership()
+
+onlyOwner functions (NativeBridge):
+  - pause()
+  - unpause()
+  - withdrawNative()
+  - rescueTokens()
+  - setDelegate() (inherited from OApp)
+  - transferOwnership() / acceptOwnership()
+
+onlyOwner functions (MintBurnWrapper):
+  - authorizeBridge()
+  - revokeBridge()
+  - transferOwnership() / acceptOwnership()
+
+onlyBridge functions (MintBurnWrapper):
+  - mint()
+  - burn()
 ```
 
 **Properties**:
 
 - Owner is initially set to governance multisig
-- Both contracts use Ownable2Step: `transferOwnership()` sets a pending owner, transfer only finalizes when the new owner calls `acceptOwnership()`
-- `renounceOwnership()` is disabled on TelcoinBridge (reverts with `CannotRenounceOwnership`)
+- All contracts use Ownable2Step: `transferOwnership()` sets a pending owner, transfer only finalizes when the new owner calls `acceptOwnership()`
+- `renounceOwnership()` is permanently disabled on `TelcoinBridge`, `NativeBridge`, and `MintBurnWrapper` (reverts with `CannotRenounceOwnership`)
+- `TelcoinBridge` holds no roles on `TelcoinV3` directly — mint/burn authority flows through `MintBurnWrapper`
 - No backdoor or emergency functions bypass ownership
 
 ### S2: Pausability Safety
@@ -456,17 +474,36 @@ User mistake flow:
 
 ---
 
+## Bridge Architecture Overview
+
+The cross-chain TEL system consists of three contract types forming a two-tier OFT mesh:
+
+- **TelcoinBridge** (`MintBurnOFTAdapter`) — deployed on each satellite chain (Ethereum, Polygon, Base, etc.). Delegates mint/burn to `MintBurnWrapper`.
+- **NativeBridge** (`NativeOFTAdapter`) — deployed once on TelcoinNetwork where TEL is the native gas token. Locks/credits native TEL.
+- **MintBurnWrapper** — adapter between `TelcoinBridge` and `TelcoinV3`'s mint/burn roles. Manages bridge authorization without touching TelcoinV3 access control.
+
+All bridges use `OFTMsgCodec` with `sharedDecimals = 6` (`decimalConversionRate = 1e12`).
+
+---
+
 ## TelcoinBridge Invariants
 
-### B1: Burn-Mint Conservation
+### B1: Burn-Mint Conservation (Satellite Chains)
 
-**Invariant**: Every outbound bridge call burns exactly `_amount` tokens; the matching inbound call mints exactly `_amount` tokens on the destination chain
+**Invariant**: On every outbound `send()`, the wrapper burns exactly the dust-adjusted amount from the sender. The matching inbound `lzReceive` mints exactly that amount to the recipient on the destination chain.
 
 ```
-∀ bridge(dstEid, to, amount, options):
-  telcoin.totalSupply() decreases by amount on source chain
-  telcoin.totalSupply() increases by amount on destination chain (upon delivery)
+∀ send(dstEid, to, amountLD, options):
+  let amountSD = removeDust(amountLD) / 1e12
+  telcoinV3.totalSupply() decreases by (amountSD * 1e12) on source chain
+  telcoinV3.totalSupply() increases by (amountSD * 1e12) on destination chain (upon delivery)
 ```
+
+**Properties**:
+
+- Burn and mint are executed via `MintBurnWrapper`, not by the bridge directly
+- Sub-1e12 wei dust is stripped before burn and remains with the sender
+- Max transferable per message: `uint64.max * 1e12 ≈ 18.4 trillion TEL`
 
 ### B2: Peer Authorization
 
@@ -479,11 +516,11 @@ User mistake flow:
 
 ### B3: Pausability
 
-**Invariant**: When paused, both `bridge()` and `_lzReceive()` revert
+**Invariant**: When paused, both `send()` and `_lzReceive()` revert
 
 ```
-paused == true → bridge() reverts with EnforcedPause
-paused == true → _lzReceive() reverts with EnforcedPause (message enters retry queue)
+paused == true → send() reverts with EnforcedPause
+paused == true → _lzReceive() reverts with EnforcedPause (message enters LZ retry queue)
 ```
 
 ### B4: Ownership Safety
@@ -495,25 +532,138 @@ transferOwnership(newOwner) → sets pendingOwner; owner unchanged until acceptO
 renounceOwnership() → always reverts with CannotRenounceOwnership
 ```
 
+### B5: Bridge Interchangeability
+
+**Invariant**: Replacing `TelcoinBridge` requires only wrapper authorization changes — no TelcoinV3 role modifications
+
+```
+swap bridge:
+  wrapperA.revokeBridge(oldBridge)      // old bridge can no longer burn
+  wrapperA.authorizeBridge(newBridge)   // new bridge can burn and mint
+  newBridge.setPeer(dstEid, peer)       // wire LZ routing
+  peer.setPeer(srcEid, newBridge)       // wire reverse
+```
+
+**Properties**:
+
+- TelcoinV3's `MINTER_ROLE` and `BURNER_ROLE` remain on the wrapper throughout
+- Old bridge immediately loses burn capability upon revocation
+- No governance vote or timelock on TelcoinV3 required
+
+---
+
+## NativeBridge Invariants
+
+### N1: Lock-Credit Conservation (TelcoinNetwork)
+
+**Invariant**: Every outbound `send()` locks native TEL in the contract (reserve increases); every inbound `lzReceive` credits native TEL to the recipient (reserve decreases).
+
+```
+∀ send(dstEid, to, amountLD, options):
+  address(nativeBridge).balance increases by removeDust(amountLD)
+
+∀ lzReceive crediting recipient r with amountLD:
+  r.balance increases by amountLD
+  address(nativeBridge).balance decreases by amountLD
+```
+
+**Properties**:
+
+- No ERC20 mint/burn occurs on TelcoinNetwork — native TEL is the asset
+- Reserve must always be ≥ the sum of pending inbound credits; owner is responsible for reserve management
+
+### N2: Reserve Sufficiency
+
+**Invariant**: `lzReceive` will revert if the reserve cannot cover the credit
+
+```
+address(nativeBridge).balance < amountLD → lzReceive reverts (ETH transfer fails)
+```
+
+**Properties**:
+
+- Owner monitors and tops up the reserve via direct ETH transfer or `receive()`
+- Owner may rebalance by calling `withdrawNative()` and bridging TEL back
+
+### N3: Correct msg.value Enforcement
+
+**Invariant**: `send()` reverts if `msg.value` does not exactly equal `nativeFee + removeDust(amount)`
+
+```
+msg.value != nativeFee + removeDust(amount) → revert IncorrectMessageValue(provided, required)
+```
+
+### N4: Single Instance Constraint
+
+**Invariant**: Only one `NativeBridge` should exist across the OFT mesh
+
+```
+∀ satellite peer registrations:
+  peer[EID_TN] == address(nativeBridge)  // one canonical TN-side counterpart
+```
+
+**Properties**:
+
+- Multiple `NativeBridge` instances would make lock/credit accounting incoherent
+- All satellite `TelcoinBridge` peers for TelcoinNetwork's EID must point to the same `NativeBridge`
+
+---
+
+## MintBurnWrapper Invariants
+
+### W1: Authorization Gate
+
+**Invariant**: Only addresses in `authorizedBridges` may call `mint` or `burn`
+
+```
+∀ call to mint(to, amount) or burn(from, amount):
+  authorizedBridges[msg.sender] == false → revert UnauthorizedBridge
+```
+
+### W2: Role Delegation Stability
+
+**Invariant**: The wrapper holds `MINTER_ROLE` and `BURNER_ROLE` on TelcoinV3 throughout normal operation
+
+```
+token.hasRole(MINTER_ROLE, wrapper) == true
+token.hasRole(BURNER_ROLE, wrapper) == true
+```
+
+**Properties**:
+
+- Revoking these roles from the wrapper would silently brick all authorized bridges
+- Only the TelcoinV3 `DEFAULT_ADMIN_ROLE` holder can revoke; should only happen in an emergency
+
+### W3: Immutable Token Reference
+
+**Invariant**: The `token` address is set at construction and cannot be changed
+
+```
+token == immutable address set at construction
+token != address(0) (enforced by constructor revert)
+```
+
 ---
 
 ## Audit Focus Areas
 
 ### High Priority
 
-1. Decimal conversion mathematics and overflow protection
-2. Reentrancy vulnerabilities in migration flow
-3. Access control implementation and Ownable2Step ownership transfers
-4. Token recovery function restrictions
-5. Cross-chain deployment consistency (TelcoinBridge peer configuration)
-6. LayerZero V2 message delivery guarantees and retry behavior
+1. Decimal conversion mathematics and dust stripping (`_removeDust`, `decimalConversionRate`)
+2. Reentrancy vulnerabilities in migration flow and native ETH crediting in NativeBridge
+3. Access control implementation and Ownable2Step ownership transfers across all contracts
+4. `MintBurnWrapper` authorization gate — unauthorized `mint`/`burn` access
+5. `NativeBridge` reserve sufficiency and lock/credit accounting
+6. Cross-chain peer configuration consistency (`TelcoinBridge` ↔ `NativeBridge` peer wiring)
+7. LayerZero V2 message delivery guarantees and retry behavior when paused
+8. `TelcoinBridge` interchangeability — correctness of revoke/authorize/setPeer sequence
 
 ### Medium Priority
 
-1. Event emission completeness and accuracy
-2. Pause mechanism effectiveness
-3. Error message clarity and gas optimization
-4. View function accuracy
+1. Event emission completeness and accuracy (`OFTSent`, `OFTReceived`, `BridgeAuthorized`, `BridgeRevoked`)
+2. Pause mechanism effectiveness on both send and receive paths
+3. `NativeBridge` single-instance constraint enforcement
+4. `MintBurnWrapper` role stability on TelcoinV3
 
 ### Low Priority
 

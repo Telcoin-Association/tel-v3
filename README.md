@@ -28,15 +28,45 @@ This project implements a migration system from OldToken (2 decimals) to Telcoin
   - Extend migration expiry via `setMigrationExpiry()`
   - Recover accidentally sent tokens via `recoverERC20(destination, tokenAddress, amount)`
 
-### TelcoinBridge
+### TelcoinBridge (Satellite Chains)
 
-- LayerZero V2 OApp for cross-chain TelcoinV3 transfers
-- Burn-and-mint model: burns on source chain, mints on destination chain
+- LayerZero V2 `MintBurnOFTAdapter` deployed on each satellite chain (Ethereum, Polygon, Base, etc.)
+- Mint/burn operations are **delegated to `MintBurnWrapper`** — the bridge itself holds no token roles
+- On send: wrapper burns ERC20 TEL from the sender; on receive: wrapper mints ERC20 TEL to the recipient
+- Compatible with `NativeBridge` on TelcoinNetwork — both encode messages via `OFTMsgCodec`
+- `sharedDecimals = 6`, `decimalConversionRate = 1e12`; sub-1e12 wei dust is stripped before send
 - **Ownable2Step**: ownership transfers require acceptance; `renounceOwnership()` is permanently disabled
 - **Owner functions:**
   - Pause/unpause bridge
   - Rescue accidentally sent tokens via `rescueTokens(token, amount)`
   - Configure LayerZero delegate via `setDelegate()`
+
+### NativeBridge (TelcoinNetwork)
+
+- LayerZero V2 `NativeOFTAdapter` deployed on TelcoinNetwork where TEL is the **native gas token**
+- On send: locks native TEL in the contract (reserve increases); on receive: credits native TEL to recipient
+- Requires `msg.value == fee + bridgeAmount` on every send call
+- Funded at deployment with a native TEL reserve to cover inbound credits; owner can `withdrawNative()` to rebalance
+- Accepts direct ETH via `receive()` for reserve top-ups
+- `sharedDecimals = 6`, matching all satellite `TelcoinBridge` deployments
+- Only **one NativeBridge** should exist across the entire OFT mesh
+- **Ownable2Step**: ownership transfers require acceptance; `renounceOwnership()` is permanently disabled
+- **Owner functions:**
+  - Pause/unpause bridge
+  - Withdraw native TEL reserve via `withdrawNative(amount)`
+  - Rescue accidentally sent ERC20 tokens via `rescueTokens(token, amount)`
+  - Configure LayerZero delegate via `setDelegate()`
+
+### MintBurnWrapper
+
+- Adapter contract that satisfies the `IMintableBurnable` interface required by `MintBurnOFTAdapter`
+- Holds `MINTER_ROLE` and `BURNER_ROLE` on TelcoinV3; `TelcoinBridge` holds neither role directly
+- **Decouples bridge upgrades from token role management**: swap bridges by calling `revokeBridge` / `authorizeBridge` — no TelcoinV3 role changes needed
+- Maintains an `authorizedBridges` mapping; only authorized bridges can call `mint` and `burn`
+- **Ownable2Step**: `renounceOwnership()` is permanently disabled
+- **Owner functions:**
+  - Authorize a bridge via `authorizeBridge(bridge)`
+  - Revoke a bridge via `revokeBridge(bridge)`
 
 ## Deployment Instructions
 
@@ -79,6 +109,10 @@ After deployment, verify:
 2. Migration contract has `MINTER_ROLE` on TelcoinV3
 3. Migration contract has correct OldToken and TelcoinV3 addresses
 4. `migrationExpiry` is set to the intended deadline
+5. `MintBurnWrapper` holds `MINTER_ROLE` and `BURNER_ROLE` on TelcoinV3
+6. `TelcoinBridge` is authorized on `MintBurnWrapper` (`authorizedBridges[bridge] == true`)
+7. `NativeBridge` is funded with sufficient native TEL reserve
+8. `TelcoinBridge` and `NativeBridge` peers are set correctly on both sides (`setPeer`)
 
 ### Step 4: Test Migration (Optional)
 
@@ -142,11 +176,14 @@ migration.recoverERC20(destination, tokenAddress, amount)
 ## Security Considerations
 
 1. **Reentrancy Protection**: Migration and recovery functions use OpenZeppelin's ReentrancyGuard
-2. **Pausable**: Owner can pause migrations or bridging in case of emergency
+2. **Pausable**: Owner can pause migrations or bridging in case of emergency; both `send` and `_lzReceive` are gated on all bridge contracts
 3. **Immutable Token Addresses**: Token addresses cannot be changed after deployment
-4. **Two-Step Ownership**: Both contracts use Ownable2Step; ownership transfers require explicit acceptance by the new owner. `renounceOwnership()` is disabled on TelcoinBridge.
+4. **Two-Step Ownership**: All contracts use `Ownable2Step`; ownership transfers require explicit acceptance. `renounceOwnership()` is permanently disabled on `TelcoinBridge`, `NativeBridge`, and `MintBurnWrapper`
 5. **Access Control**: Critical functions restricted to owner or role holders
 6. **Safe Math**: Solidity 0.8+ automatic overflow protection
+7. **Bridge Role Decoupling**: `TelcoinBridge` holds no direct roles on `TelcoinV3`. Mint/burn capability is managed through `MintBurnWrapper`, so bridges can be upgraded or revoked without modifying TelcoinV3's access control
+8. **Interchangeable Bridges**: Replacing a `TelcoinBridge` requires only `revokeBridge` + `authorizeBridge` on the wrapper and `setPeer` updates — no token governance action required
+9. **Single NativeBridge Constraint**: Only one `NativeBridge` should exist across the OFT mesh; deploying multiple would break lock/credit accounting
 
 ## Gas Estimates
 
