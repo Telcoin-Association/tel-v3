@@ -5,6 +5,7 @@ import {BaseSetup} from "./BaseSetup.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {NativeBridge} from "../../src/NativeBridge.sol";
+import {NativeOFTAdapter} from "@layerzerolabs/oft-evm/contracts/NativeOFTAdapter.sol";
 import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 
@@ -95,8 +96,10 @@ contract NativeBridgeLzSendTest is BaseSetup {
         MessagingFee memory fee = nativeBridge.quoteSend(sendParam, false);
 
         // Send only the fee, not fee + amount — NativeOFTAdapter enforces exact msg.value
-        vm.expectRevert();
-        nativeBridge.send{value: fee.nativeFee}(sendParam, fee, user1);
+        uint256 provided = fee.nativeFee;
+        uint256 required = fee.nativeFee + bridgeAmount;
+        vm.expectRevert(abi.encodeWithSelector(NativeOFTAdapter.IncorrectMessageValue.selector, provided, required));
+        nativeBridge.send{value: provided}(sendParam, fee, user1);
         vm.stopPrank();
     }
 

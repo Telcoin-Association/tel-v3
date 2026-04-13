@@ -130,6 +130,9 @@ contract TokenMigrationFuzzTest is Test, Roles {
             users[i] = address(uint160(uint256(keccak256(abi.encode(seed, i)))));
             balances[i] = (uint256(keccak256(abi.encode(seed, i, "amount"))) % (MAX_OLD_TOKEN_AMOUNT / numUsers)) + 1;
 
+            // Initialize the account in local fork state to avoid RPC lookup failure
+            // when vm.prank encounters a generated address that exists on mainnet.
+            vm.deal(users[i], 0);
             deal(address(oldToken), users[i], balances[i]);
             totalOldTokens += balances[i];
 

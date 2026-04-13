@@ -148,6 +148,7 @@ contract NativeBridgeTest is BaseSetup {
         assertEq(telcoinA.balanceOf(user1), erc20Before);
     }
 
+    /// @dev Burns ERC20 TEL on satellite A and delivers the packet to NativeBridge on TelcoinNetwork.
     function _stepSatelliteToTN(uint256 bridgeAmount) internal {
         bytes memory options = _createBasicOptions();
         SendParam memory toTN = _createSendParam(EID_TN, user1, bridgeAmount, options);
@@ -158,6 +159,7 @@ contract NativeBridgeTest is BaseSetup {
         endpointTN.deliverPacket(EID_A, _addressToBytes32(address(bridgeA)), 1, receipt.guid, _encodeOFTMessage(user1, bridgeAmount), address(nativeBridge));
     }
 
+    /// @dev Locks native TEL in NativeBridge on TelcoinNetwork and delivers the packet to satellite A.
     function _stepTNToSatellite(uint256 bridgeAmount) internal {
         bytes memory options = _createBasicOptions();
         SendParam memory toA = _createSendParam(EID_A, user1, bridgeAmount, options);
@@ -233,6 +235,27 @@ contract NativeBridgeTest is BaseSetup {
         nativeBridge.unpause();
         assertFalse(nativeBridge.paused());
         vm.stopPrank();
+    }
+
+    function test_Unpause_RevertNotOwner() public {
+        vm.prank(owner);
+        nativeBridge.pause();
+
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        nativeBridge.unpause();
+    }
+
+    function test_Receive_DirectFunding() public {
+        uint256 reserveBefore = address(nativeBridge).balance;
+        uint256 fundAmount = 50 ether;
+
+        vm.deal(user1, fundAmount);
+        vm.prank(user1);
+        (bool success, ) = address(nativeBridge).call{value: fundAmount}("");
+
+        assertTrue(success);
+        assertEq(address(nativeBridge).balance, reserveBefore + fundAmount);
     }
 
     // ----------------------

@@ -4,6 +4,8 @@ pragma solidity ^0.8.30;
 import {BaseSetup} from "./BaseSetup.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Origin} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
+import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
+import {OAppReceiver} from "@layerzerolabs/oapp-evm/contracts/oapp/OAppReceiver.sol";
 
 /**
  * @title NativeBridgeLzReceiveTest
@@ -64,15 +66,16 @@ contract NativeBridgeLzReceiveTest is BaseSetup {
         Origin memory origin = Origin({srcEid: EID_A, sender: _addressToBytes32(address(bridgeA)), nonce: 1});
 
         vm.prank(user1);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(OAppReceiver.OnlyEndpoint.selector, user1));
         nativeBridge.lzReceive(origin, keccak256("test-guid"), _encodeOFTMessage(user1, 1000 ether), address(0), bytes(""));
     }
 
     function test_NativeLzReceive_RevertInvalidPeer() public {
-        Origin memory origin = Origin({srcEid: EID_A, sender: _addressToBytes32(address(0x999)), nonce: 1});
+        bytes32 fakeSender = _addressToBytes32(address(0x999));
+        Origin memory origin = Origin({srcEid: EID_A, sender: fakeSender, nonce: 1});
 
         vm.prank(address(endpointTN));
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(IOAppCore.OnlyPeer.selector, EID_A, fakeSender));
         nativeBridge.lzReceive(origin, keccak256("test-guid"), _encodeOFTMessage(user1, 1000 ether), address(0), bytes(""));
     }
 
