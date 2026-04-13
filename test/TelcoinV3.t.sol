@@ -123,6 +123,39 @@ contract TelcoinV3Test is Test, Roles {
         assertEq(token.balanceOf(user), preBalance - MINT_AMOUNT);
     }
 
+    // -------------------
+    // rescueTokens Tests
+    // -------------------
+
+    /// @dev Admin can recover ERC20 tokens accidentally sent to the TelcoinV3 contract.
+    function test_RescueTokens() public {
+        uint256 stuckAmount = 100 ether;
+
+        // Simulate tokens accidentally sent directly to the token contract
+        vm.prank(bridge);
+        token.mint(address(token), stuckAmount);
+
+        uint256 adminBalanceBefore = token.balanceOf(owner);
+
+        vm.prank(owner);
+        token.rescueTokens(address(token), stuckAmount);
+
+        assertEq(token.balanceOf(address(token)), 0);
+        assertEq(token.balanceOf(owner), adminBalanceBefore + stuckAmount);
+    }
+
+    /// @dev rescueTokens reverts when called by an address without DEFAULT_ADMIN_ROLE.
+    function test_RevertIf_NonAdminRescuesTokens() public {
+        vm.prank(bridge);
+        token.mint(address(token), 100 ether);
+
+        vm.prank(attacker);
+        vm.expectRevert(
+            abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", attacker, bytes32(0))
+        );
+        token.rescueTokens(address(token), 100 ether);
+    }
+
     /// @dev Verifies transfers fail after contract is paused
     function test_RevertIf_TransferWhilePaused() public {
         vm.prank(bridge);
