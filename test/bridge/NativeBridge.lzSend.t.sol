@@ -22,6 +22,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
     // Send Tests
     // ----------
 
+    /// @notice send() locks native TEL in the bridge and dispatches the LZ message.
     function test_NativeSend_Success() public {
         uint256 bridgeAmount = 10 ether;
         bytes memory options = _createBasicOptions();
@@ -40,6 +41,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
         assertEq(receipt.fee.nativeFee, fee.nativeFee);
     }
 
+    /// @notice send() emits OFTSent with the correct dstEid, sender, and amounts.
     function test_NativeSend_EmitsEvent() public {
         uint256 bridgeAmount = 10 ether;
         bytes memory options = _createBasicOptions();
@@ -56,6 +58,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() reverts with EnforcedPause when the bridge is paused.
     function test_NativeSend_RevertWhenPaused() public {
         uint256 bridgeAmount = 10 ether;
         bytes memory options = _createBasicOptions();
@@ -71,6 +74,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() reverts with NoPeer when no peer is configured for the destination EID.
     function test_NativeSend_RevertNoPeer() public {
         // Deploy a NativeBridge with no peer set for EID_A
         vm.startPrank(owner);
@@ -87,6 +91,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() reverts with IncorrectMessageValue when msg.value does not cover fee + amount.
     function test_NativeSend_RevertIncorrectMsgValue() public {
         uint256 bridgeAmount = 10 ether;
         bytes memory options = _createBasicOptions();
@@ -103,6 +108,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() correctly locks TEL when bridging to two different satellite chains.
     function test_NativeSend_ToBothSatellites() public {
         uint256 bridgeAmount = 5 ether;
         bytes memory options = _createBasicOptions();
@@ -126,6 +132,7 @@ contract NativeBridgeLzSendTest is BaseSetup {
         assertEq(address(nativeBridge).balance, nativeBefore + bridgeAmount + bridgeAmount);
     }
 
+    /// @notice send() locks exactly the dust-adjusted amount for any valid input amount.
     function testFuzz_NativeSend(uint256 amount) public {
         // Minimum 1e12 to avoid full dust removal; max 50 ether (user has 100 ether, need room for fee)
         amount = bound(amount, 1e12, 50 ether);

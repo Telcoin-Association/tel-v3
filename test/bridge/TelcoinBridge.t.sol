@@ -18,6 +18,7 @@ contract TelcoinBridgeTest is BaseSetup {
     // Initial State Tests
     // -------------------
 
+    /// @notice Token, minterBurner, and owner are set correctly at deployment.
     function test_Constructor() public view {
         assertEq(bridgeA.token(), address(telcoinA));
         assertEq(address(bridgeA.minterBurner()), address(wrapperA));
@@ -28,6 +29,7 @@ contract TelcoinBridgeTest is BaseSetup {
     // Round Trip Tests
     // ----------------
 
+    /// @notice ERC20 TEL burned on Chain A is minted on Chain B, then burned on B and minted back on A.
     function test_FullRoundTrip() public {
         uint256 bridgeAmount = 5000 ether;
         bytes memory options = _createBasicOptions();
@@ -79,6 +81,7 @@ contract TelcoinBridgeTest is BaseSetup {
     // Quote Tests
     // -----------
 
+    /// @notice quoteSend returns the correct LZ messaging fee for a given send.
     function test_Quote() public view {
         bytes memory options = _createBasicOptions();
         SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, options);
@@ -89,6 +92,7 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(fee.lzTokenFee, 0);
     }
 
+    /// @notice LZ messaging fee is independent of the bridged token amount.
     function test_Quote_DifferentAmountsSameFee() public view {
         bytes memory options = _createBasicOptions();
 
@@ -102,18 +106,21 @@ contract TelcoinBridgeTest is BaseSetup {
     // Permissioned Functions Tests
     // ----------------------------
 
+    /// @notice Owner can pause the bridge.
     function test_Pause() public {
         vm.prank(owner);
         bridgeA.pause();
         assertTrue(bridgeA.paused());
     }
 
+    /// @notice pause reverts when called by a non-owner.
     function test_Pause_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         bridgeA.pause();
     }
 
+    /// @notice Owner can unpause the bridge after pausing.
     function test_Unpause() public {
         vm.startPrank(owner);
         bridgeA.pause();
@@ -122,6 +129,7 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice unpause reverts when called by a non-owner.
     function test_Unpause_RevertNotOwner() public {
         vm.prank(owner);
         bridgeA.pause();
@@ -131,6 +139,7 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.unpause();
     }
 
+    /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge.
     function test_RescueTokens() public {
         uint256 stuckAmount = 100 ether;
         vm.prank(user1);
@@ -145,6 +154,7 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(telcoinA.balanceOf(owner), ownerBalanceBefore + stuckAmount);
     }
 
+    /// @notice rescueTokens reverts when called by a non-owner.
     function test_RescueTokens_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
@@ -155,6 +165,7 @@ contract TelcoinBridgeTest is BaseSetup {
     // Ownership Safety Tests
     // ----------------------
 
+    /// @notice transferOwnership sets pendingOwner but does not change owner yet (two-step).
     function test_TransferOwnership_SetsPendingOwner() public {
         address newOwner = makeAddr("newOwner");
         vm.prank(owner);
@@ -164,6 +175,7 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(bridgeA.owner(), owner);
     }
 
+    /// @notice Ownership transfer completes only after the pending owner calls acceptOwnership().
     function test_TransferOwnership_AcceptOwnership() public {
         address newOwner = makeAddr("newOwner");
 
@@ -177,6 +189,7 @@ contract TelcoinBridgeTest is BaseSetup {
         assertEq(bridgeA.pendingOwner(), address(0));
     }
 
+    /// @notice A non-pending-owner cannot call acceptOwnership().
     function test_TransferOwnership_RevertNotPendingOwner() public {
         address newOwner = makeAddr("newOwner");
 
@@ -188,12 +201,14 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.acceptOwnership();
     }
 
+    /// @notice Only the current owner can initiate a transfer.
     function test_TransferOwnership_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
         bridgeA.transferOwnership(user1);
     }
 
+    /// @notice renounceOwnership always reverts to prevent bricking bridge configuration.
     function test_RenounceOwnership_Reverts() public {
         vm.prank(owner);
         vm.expectRevert(TelcoinBridge.CannotRenounceOwnership.selector);
@@ -204,18 +219,21 @@ contract TelcoinBridgeTest is BaseSetup {
     // MintBurnWrapper Tests
     // ----------------------
 
+    /// @notice MintBurnWrapper reverts when an unauthorized address calls mint().
     function test_Wrapper_RevertUnauthorizedMint() public {
         vm.prank(user1);
         vm.expectRevert(MintBurnWrapper.UnauthorizedBridge.selector);
         wrapperA.mint(user1, 1 ether);
     }
 
+    /// @notice MintBurnWrapper reverts when an unauthorized address calls burn().
     function test_Wrapper_RevertUnauthorizedBurn() public {
         vm.prank(user1);
         vm.expectRevert(MintBurnWrapper.UnauthorizedBridge.selector);
         wrapperA.burn(user1, 1 ether);
     }
 
+    /// @notice Revoking a bridge via the wrapper prevents it from burning tokens on send.
     function test_Wrapper_RevokeBridge_BlocksMint() public {
         vm.prank(owner);
         wrapperA.revokeBridge(address(bridgeA));
@@ -232,6 +250,7 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice revokeBridge emits BridgeRevoked.
     function test_Wrapper_RevokeBridge_EmitsEvent() public {
         vm.prank(owner);
         vm.expectEmit(true, false, false, false);
@@ -239,6 +258,7 @@ contract TelcoinBridgeTest is BaseSetup {
         wrapperA.revokeBridge(address(bridgeA));
     }
 
+    /// @notice authorizeBridge emits BridgeAuthorized.
     function test_Wrapper_AuthorizeBridge_EmitsEvent() public {
         address newBridge = makeAddr("newBridge");
         vm.prank(owner);
@@ -247,17 +267,20 @@ contract TelcoinBridgeTest is BaseSetup {
         wrapperA.authorizeBridge(newBridge);
     }
 
+    /// @notice authorizeBridge reverts when passed address(0).
     function test_Wrapper_AuthorizeBridge_RevertZeroAddress() public {
         vm.prank(owner);
         vm.expectRevert(MintBurnWrapper.ZeroAddress.selector);
         wrapperA.authorizeBridge(address(0));
     }
 
+    /// @notice MintBurnWrapper constructor reverts when token is address(0).
     function test_Wrapper_Constructor_RevertZeroToken() public {
         vm.expectRevert(MintBurnWrapper.ZeroAddress.selector);
         new MintBurnWrapper(address(0), owner);
     }
 
+    /// @notice MintBurnWrapper renounceOwnership always reverts.
     function test_Wrapper_RenounceOwnership_Reverts() public {
         vm.prank(owner);
         vm.expectRevert(MintBurnWrapper.CannotRenounceOwnership.selector);
@@ -268,8 +291,7 @@ contract TelcoinBridgeTest is BaseSetup {
     // Interchangeable Bridge
     // ---------------------
 
-    /// @dev Verifies the interchangeable architecture: swapping bridges only requires
-    ///      updating the wrapper's authorized bridges — no TelcoinV3 role changes needed.
+    /// @notice Swapping bridges only requires updating the wrapper's authorized bridges — no TelcoinV3 role changes needed.
     function test_BridgeIsInterchangeable() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();

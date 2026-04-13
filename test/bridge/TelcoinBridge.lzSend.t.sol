@@ -19,6 +19,7 @@ contract TelcoinBridgeLzSendTest is BaseSetup {
     // Send Tests
     // ----------
 
+    /// @notice send() burns ERC20 TEL from the sender and dispatches the LZ message.
     function test_LzSend_Success() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
@@ -38,6 +39,7 @@ contract TelcoinBridgeLzSendTest is BaseSetup {
         assertEq(receipt.fee.nativeFee, fee.nativeFee);
     }
 
+    /// @notice send() emits OFTSent with the correct dstEid, sender, and amounts.
     function test_LzSend_EmitsEvent() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
@@ -54,6 +56,7 @@ contract TelcoinBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() reverts with EnforcedPause when the bridge is paused.
     function test_LzSend_RevertWhenPaused() public {
         bytes memory options = _createBasicOptions();
         SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, options);
@@ -68,6 +71,7 @@ contract TelcoinBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() reverts with NoPeer when no peer is configured for the destination EID.
     function test_LzSend_RevertNoPeer() public {
         // Deploy a bridge with no peer set
         vm.startPrank(owner);
@@ -89,6 +93,7 @@ contract TelcoinBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() burns exactly the dust-adjusted amount for any valid input amount.
     function testFuzz_LzSend(uint256 amount) public {
         // Minimum 1e12 to avoid full dust removal; max USER_BALANCE
         amount = bound(amount, 1e12, USER_BALANCE);

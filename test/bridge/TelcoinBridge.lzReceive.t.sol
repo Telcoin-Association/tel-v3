@@ -14,6 +14,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
     // LzReceive Tests
     // ---------------
 
+    /// @notice lzReceive mints ERC20 TEL to the recipient and increases total supply.
     function test_LzReceive_MintsTokens() public {
         uint256 mintAmount = 2000 ether;
         uint256 preSupply = telcoinB.totalSupply();
@@ -27,6 +28,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         assertEq(telcoinB.totalSupply(), preSupply + mintAmount);
     }
 
+    /// @notice lzReceive emits OFTReceived with the correct guid, srcEid, recipient, and amount.
     function test_LzReceive_EmitsEvent() public {
         uint256 mintAmount = 3000 ether;
         bytes32 guid = keccak256("test-guid-2");
@@ -41,6 +43,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         bridgeB.lzReceive(origin, guid, _encodeOFTMessage(user2, mintAmount), address(0), bytes(""));
     }
 
+    /// @notice lzReceive reverts when called by an address other than the LZ endpoint.
     function test_LzReceive_RevertNotEndpoint() public {
         Origin memory origin = Origin({srcEid: EID_A, sender: _addressToBytes32(address(bridgeA)), nonce: 1});
 
@@ -49,6 +52,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         bridgeB.lzReceive(origin, keccak256("test-guid"), _encodeOFTMessage(user1, 1000 ether), address(0), bytes(""));
     }
 
+    /// @notice lzReceive reverts when the origin sender is not the registered peer.
     function test_LzReceive_RevertInvalidPeer() public {
         Origin memory origin = Origin({srcEid: EID_A, sender: _addressToBytes32(address(0x999)), nonce: 1});
 
@@ -57,6 +61,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         bridgeB.lzReceive(origin, keccak256("test-guid"), _encodeOFTMessage(user1, 1000 ether), address(0), bytes(""));
     }
 
+    /// @notice lzReceive reverts with EnforcedPause when the bridge is paused.
     function test_LzReceive_RevertWhenPaused() public {
         Origin memory origin = Origin({srcEid: EID_A, sender: _addressToBytes32(address(bridgeA)), nonce: 1});
 
@@ -68,6 +73,7 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
         bridgeB.lzReceive(origin, keccak256("test-guid"), _encodeOFTMessage(user1, 1 ether), address(0), bytes(""));
     }
 
+    /// @notice lzReceive mints exactly the correct ERC20 amount for any valid recipient and shared-decimal amount.
     function testFuzz_LzReceive(address recipient, uint64 amountSD) public {
         vm.assume(recipient != address(0));
         vm.assume(amountSD > 0);
