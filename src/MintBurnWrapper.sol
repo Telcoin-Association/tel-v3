@@ -28,6 +28,8 @@ contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
 
     event BridgeAuthorized(address indexed bridge);
     event BridgeRevoked(address indexed bridge);
+    event BridgeMinted(address indexed bridge, address indexed to, uint256 amount);
+    event BridgeBurned(address indexed bridge, address indexed from, uint256 amount);
 
     // ~ Errors ~
 
@@ -63,6 +65,7 @@ contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
      */
     function mint(address _to, uint256 _amount) external onlyBridge returns (bool) {
         token.mint(_to, _amount);
+        emit BridgeMinted(msg.sender, _to, _amount);
         return true;
     }
 
@@ -74,6 +77,7 @@ contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
      */
     function burn(address _from, uint256 _amount) external onlyBridge returns (bool) {
         token.burn(_from, _amount);
+        emit BridgeBurned(msg.sender, _from, _amount);
         return true;
     }
 

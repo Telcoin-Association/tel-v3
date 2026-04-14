@@ -267,6 +267,28 @@ contract TelcoinBridgeTest is BaseSetup {
         wrapperA.authorizeBridge(newBridge);
     }
 
+    /// @notice mint emits BridgeMinted with the calling bridge, recipient, and amount.
+    function test_Wrapper_Mint_EmitsBridgeMinted() public {
+        uint256 amount = 500 ether;
+        vm.prank(address(bridgeA));
+        vm.expectEmit(true, true, false, true);
+        emit MintBurnWrapper.BridgeMinted(address(bridgeA), user1, amount);
+        wrapperA.mint(user1, amount);
+    }
+
+    /// @notice burn emits BridgeBurned with the calling bridge, burned address, and amount.
+    function test_Wrapper_Burn_EmitsBridgeBurned() public {
+        uint256 amount = 500 ether;
+        // Give user1 tokens to burn
+        vm.prank(address(bridgeA));
+        wrapperA.mint(user1, amount);
+
+        vm.prank(address(bridgeA));
+        vm.expectEmit(true, true, false, true);
+        emit MintBurnWrapper.BridgeBurned(address(bridgeA), user1, amount);
+        wrapperA.burn(user1, amount);
+    }
+
     /// @notice authorizeBridge reverts when passed address(0).
     function test_Wrapper_AuthorizeBridge_RevertZeroAddress() public {
         vm.prank(owner);
