@@ -12,8 +12,10 @@ import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
  *         required by MintBurnOFTAdapter.
  * @dev Acts as the minterBurner for TelcoinBridge. Holds MINTER_ROLE and BURNER_ROLE on
  *      TelcoinV3 so the bridge itself does not need direct token roles. This decouples bridge
- *      upgrades from token role management — new bridges are added/removed here without
- *      touching TelcoinV3's access control.
+ *      upgrades from token role management — swap bridges via authorizeBridge/revokeBridge
+ *      without touching TelcoinV3's access control.
+ *
+ *      Only one bridge is active at a time.
  */
 contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
     // ~ State ~
@@ -21,8 +23,8 @@ contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
     /// @notice The TelcoinV3 token this wrapper delegates to
     IERC20Mintable public immutable token;
 
-    /// @notice Bridges authorised to call mint and burn through this wrapper
-    mapping(address => bool) public authorizedBridges;
+    /// @notice The single bridge authorised to call mint and burn through this wrapper
+    address public bridge;
 
     // ~ Events ~
 
@@ -36,11 +38,13 @@ contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
     error UnauthorizedBridge();
     error ZeroAddress();
     error CannotRenounceOwnership();
+    error BridgeAlreadySet();
+    error BridgeNotSet();
 
     // ~ Modifiers ~
 
     modifier onlyBridge() {
-        if (!authorizedBridges[msg.sender]) revert UnauthorizedBridge();
+        if (msg.sender != bridge) revert UnauthorizedBridge();
         _;
     }
 
@@ -84,21 +88,27 @@ contract MintBurnWrapper is IMintableBurnable, Ownable2Step {
     // ~ Bridge Management ~
 
     /**
-     * @notice Authorize a bridge to call mint and burn through this wrapper.
-     * @param _bridge The bridge contract address
+     * @notice Authorize a new bridge to call mint and burn through this wrapper.
+     * @dev Reverts if _bridge is already the authorized bridge (idempotency guard).
+     * @param _bridge The bridge contract address to authorize
      */
     function authorizeBridge(address _bridge) external onlyOwner {
         if (_bridge == address(0)) revert ZeroAddress();
-        authorizedBridges[_bridge] = true;
+        if (bridge == _bridge) revert BridgeAlreadySet();
+        bridge = _bridge;
         emit BridgeAuthorized(_bridge);
     }
 
     /**
-     * @notice Revoke a bridge's authorization.
-     * @param _bridge The bridge contract address
+     * @notice Revoke the current bridge's authorization.
+     * @dev Reverts if no bridge is currently set (idempotency guard). Caller must supply the
+     *      current bridge address to confirm intent before clearing it.
+     * @param _bridge The bridge address to revoke — must match the currently authorized bridge
      */
     function revokeBridge(address _bridge) external onlyOwner {
-        authorizedBridges[_bridge] = false;
+        if (bridge == address(0)) revert BridgeNotSet();
+        if (bridge != _bridge) revert UnauthorizedBridge();
+        bridge = address(0);
         emit BridgeRevoked(_bridge);
     }
 

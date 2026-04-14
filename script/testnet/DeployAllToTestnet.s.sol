@@ -245,7 +245,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         // 3. Authorize bridge on MintBurnWrapper
 
         MintBurnWrapper wrapperContract = MintBurnWrapper(wrapper);
-        if (!wrapperContract.authorizedBridges(bridge)) {
+        if (wrapperContract.bridge() != bridge) {
             wrapperContract.authorizeBridge(bridge);
         }
 

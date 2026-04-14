@@ -238,7 +238,7 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.prank(owner);
         wrapperA.revokeBridge(address(bridgeA));
 
-        assertFalse(wrapperA.authorizedBridges(address(bridgeA)));
+        assertEq(wrapperA.bridge(), address(0));
 
         bytes memory options = _createBasicOptions();
         SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, options);
@@ -258,13 +258,14 @@ contract TelcoinBridgeTest is BaseSetup {
         wrapperA.revokeBridge(address(bridgeA));
     }
 
-    /// @notice authorizeBridge emits BridgeAuthorized.
+    /// @notice authorizeBridge emits BridgeAuthorized and updates the bridge address.
     function test_Wrapper_AuthorizeBridge_EmitsEvent() public {
         address newBridge = makeAddr("newBridge");
         vm.prank(owner);
         vm.expectEmit(true, false, false, false);
         emit MintBurnWrapper.BridgeAuthorized(newBridge);
         wrapperA.authorizeBridge(newBridge);
+        assertEq(wrapperA.bridge(), newBridge);
     }
 
     /// @notice mint emits BridgeMinted with the calling bridge, recipient, and amount.
@@ -294,6 +295,29 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.prank(owner);
         vm.expectRevert(MintBurnWrapper.ZeroAddress.selector);
         wrapperA.authorizeBridge(address(0));
+    }
+
+    /// @notice authorizeBridge reverts when the bridge is already set to the given address.
+    function test_Wrapper_AuthorizeBridge_RevertAlreadySet() public {
+        vm.prank(owner);
+        vm.expectRevert(MintBurnWrapper.BridgeAlreadySet.selector);
+        wrapperA.authorizeBridge(address(bridgeA));
+    }
+
+    /// @notice revokeBridge reverts when no bridge is currently authorized.
+    function test_Wrapper_RevokeBridge_RevertNotSet() public {
+        vm.startPrank(owner);
+        wrapperA.revokeBridge(address(bridgeA));
+        vm.expectRevert(MintBurnWrapper.BridgeNotSet.selector);
+        wrapperA.revokeBridge(address(bridgeA));
+        vm.stopPrank();
+    }
+
+    /// @notice revokeBridge reverts when the supplied address does not match the current bridge.
+    function test_Wrapper_RevokeBridge_RevertWrongBridge() public {
+        vm.prank(owner);
+        vm.expectRevert(MintBurnWrapper.UnauthorizedBridge.selector);
+        wrapperA.revokeBridge(address(0x999));
     }
 
     /// @notice MintBurnWrapper constructor reverts when token is address(0).
