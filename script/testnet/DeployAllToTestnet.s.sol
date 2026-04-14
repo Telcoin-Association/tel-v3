@@ -87,7 +87,8 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         string chainName;
         string rpc_url;
         address lz_endpoint;
-        uint32 chainId;
+        uint32 lzChainId;
+        uint256 evmChainId;
         address legacyTel;
         uint256 initialSupply;
         bool mainChain;
@@ -116,7 +117,8 @@ contract DeployAllToTestnet is DeployUtility, Roles {
                 chainName: "eth-sepolia",
                 rpc_url: vm.envString("ETH_SEPOLIA_RPC_URL"),
                 lz_endpoint: ETH_SEPOLIA_LZ_ENDPOINT_V2,
-                chainId: ETH_SEPOLIA_LZ_CHAIN_ID_V2,
+                lzChainId: ETH_SEPOLIA_LZ_CHAIN_ID_V2,
+                evmChainId: ETH_SEPOLIA_CHAIN_ID,
                 legacyTel: _loadDeploymentAddress("eth-sepolia", "TelcoinLegacy"),
                 initialSupply: 100_000_000 ether,
                 mainChain: true
@@ -127,7 +129,8 @@ contract DeployAllToTestnet is DeployUtility, Roles {
                 chainName: "base-sepolia",
                 rpc_url: vm.envString("BASE_SEPOLIA_RPC_URL"),
                 lz_endpoint: BASE_SEPOLIA_LZ_ENDPOINT_V2,
-                chainId: BASE_SEPOLIA_LZ_CHAIN_ID_V2,
+                lzChainId: BASE_SEPOLIA_LZ_CHAIN_ID_V2,
+                evmChainId: BASE_SEPOLIA_CHAIN_ID,
                 legacyTel: _loadDeploymentAddress("base-sepolia", "TelcoinLegacy"),
                 initialSupply: 100_000_000 ether,
                 mainChain: false
@@ -179,7 +182,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             for (uint256 j; j < len; ++j) {
                 if (i != j) {
                     bytes32 peerAddress = bytes32(uint256(uint160(getRuntimeData[allChains[j].rpc_url].bridgeAddress)));
-                    uint32 peerEid = allChains[j].chainId;
+                    uint32 peerEid = allChains[j].lzChainId;
 
                     // Only set peer if not already configured
                     if (bridge.peers(peerEid) != peerAddress) {
@@ -207,6 +210,18 @@ contract DeployAllToTestnet is DeployUtility, Roles {
      * @return bridge    Deployed TelcoinBridge address
      */
     function _deployAndConfigure(NetworkData memory networkData) internal returns (address token, address migrator, address wrapper, address bridge) {
+
+        // 0. Chain ID sanity check
+
+        require(
+            block.chainid == networkData.evmChainId,
+            string.concat(
+                "Chain ID mismatch: expected ",
+                vm.toString(networkData.evmChainId),
+                " but connected to ",
+                vm.toString(block.chainid)
+            )
+        );
 
         // 1. Deploy
 
