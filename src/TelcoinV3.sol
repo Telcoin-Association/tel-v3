@@ -46,8 +46,26 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
         if (totalSupply() > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
     }
 
-    /// @notice Burn tokens. Only callable by BURNER_ROLE
+    /**
+     * @notice Burns tokens from `from`. Requires `from` to have approved the caller.
+     * @dev Enforces allowance so a compromised BURNER_ROLE cannot drain arbitrary wallets.
+     *      The bridge (MintBurnWrapper) must hold an allowance from the user before calling.
+     * @param from Address to burn from
+     * @param amount Amount to burn
+     */
     function burn(address from, uint256 amount) external onlyRole(BURNER_ROLE) {
+        _spendAllowance(from, msg.sender, amount);
+        _burn(from, amount);
+    }
+
+    /**
+     * @notice Burns tokens from any wallet without requiring an approval.
+     * @dev Reserved for governance use in emergency situations (e.g. burning hacker balances).
+     *      Gated by DEFAULT_ADMIN_ROLE — not callable by normal BURNER_ROLE holders.
+     * @param from Address to burn from
+     * @param amount Amount to burn
+     */
+    function rescueBurn(address from, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _burn(from, amount);
     }
 

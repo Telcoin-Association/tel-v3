@@ -101,6 +101,9 @@ contract TelcoinV3Test is Test, Roles {
 
         uint256 preBalance = token.balanceOf(user);
 
+        vm.prank(user);
+        token.approve(bridge, MINT_AMOUNT);
+
         vm.prank(bridge);
         token.burn(user, MINT_AMOUNT);
 
@@ -157,6 +160,9 @@ contract TelcoinV3Test is Test, Roles {
         vm.prank(bridge);
         token.mint(user, MINT_AMOUNT);
 
+        vm.prank(user);
+        token.approve(bridge, MINT_AMOUNT);
+
         vm.prank(owner);
         token.pause();
 
@@ -166,6 +172,54 @@ contract TelcoinV3Test is Test, Roles {
         token.burn(user, MINT_AMOUNT);
 
         assertEq(token.balanceOf(user), preBalance - MINT_AMOUNT);
+    }
+
+    /// @notice burn reverts when the caller has no allowance from the token holder.
+    function test_RevertIf_BurnWithoutApproval() public {
+        vm.prank(bridge);
+        token.mint(user, MINT_AMOUNT);
+
+        vm.prank(bridge);
+        vm.expectRevert();
+        token.burn(user, MINT_AMOUNT);
+    }
+
+    // ----------------
+    // rescueBurn Tests
+    // ----------------
+
+    /// @notice Admin can burn from any wallet without approval.
+    function test_RescueBurn() public {
+        vm.prank(bridge);
+        token.mint(user, MINT_AMOUNT);
+
+        uint256 preSupply = token.totalSupply();
+
+        vm.prank(owner);
+        token.rescueBurn(user, MINT_AMOUNT);
+
+        assertEq(token.balanceOf(user), 0);
+        assertEq(token.totalSupply(), preSupply - MINT_AMOUNT);
+    }
+
+    /// @notice rescueBurn reverts when called by a BURNER_ROLE holder (not admin).
+    function test_RevertIf_BurnerCannotRescueBurn() public {
+        vm.prank(bridge);
+        token.mint(user, MINT_AMOUNT);
+
+        vm.prank(bridge);
+        vm.expectRevert();
+        token.rescueBurn(user, MINT_AMOUNT);
+    }
+
+    /// @notice rescueBurn reverts when called by an unpermissioned address.
+    function test_RevertIf_NonAdminCannotRescueBurn() public {
+        vm.prank(bridge);
+        token.mint(user, MINT_AMOUNT);
+
+        vm.prank(attacker);
+        vm.expectRevert();
+        token.rescueBurn(user, MINT_AMOUNT);
     }
 
     // -------------------

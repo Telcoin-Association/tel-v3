@@ -280,9 +280,12 @@ contract TelcoinBridgeTest is BaseSetup {
     /// @notice burn emits BridgeBurned with the calling bridge, burned address, and amount.
     function test_Wrapper_Burn_EmitsBridgeBurned() public {
         uint256 amount = 500 ether;
-        // Give user1 tokens to burn
+        // Give user1 tokens to burn, then approve wrapperA
         vm.prank(address(bridgeA));
         wrapperA.mint(user1, amount);
+
+        vm.prank(user1);
+        telcoinA.approve(address(wrapperA), amount);
 
         vm.prank(address(bridgeA));
         vm.expectEmit(true, true, false, true);

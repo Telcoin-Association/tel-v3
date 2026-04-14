@@ -90,6 +90,16 @@ contract BaseSetup is Test, Roles {
 
         vm.stopPrank();
 
+        // Users must approve wrappers so the bridge can burn their tokens on send
+        vm.prank(user1);
+        telcoinA.approve(address(wrapperA), type(uint256).max);
+        vm.prank(user2);
+        telcoinA.approve(address(wrapperA), type(uint256).max);
+        vm.prank(user1);
+        telcoinB.approve(address(wrapperB), type(uint256).max);
+        vm.prank(user2);
+        telcoinB.approve(address(wrapperB), type(uint256).max);
+
         // Fund users with native for LZ fees and NativeBridge sends
         vm.deal(user1, 100 ether);
         vm.deal(user2, 100 ether);
