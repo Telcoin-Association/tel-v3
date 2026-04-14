@@ -223,4 +223,47 @@ contract TelcoinV3Test is Test, Roles {
 
         assertEq(token.balanceOf(user2), preBalance + MINT_AMOUNT);
     }
+
+    /// @notice Admin can revoke a permissioned role from a holder; revoked address loses access.
+    function test_AdminCanRevokeRole() public {
+        vm.prank(owner);
+        token.revokeRole(MINTER_ROLE, bridge);
+
+        assertFalse(token.hasRole(MINTER_ROLE, bridge));
+
+        vm.prank(bridge);
+        vm.expectRevert();
+        token.mint(user, MINT_AMOUNT);
+    }
+
+    /// @notice Admin can grant DEFAULT_ADMIN_ROLE to another address.
+    function test_AdminCanGrantAdminRole() public {
+        address newAdmin = makeAddr("newAdmin");
+        bytes32 adminRole = token.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        token.grantRole(adminRole, newAdmin);
+
+        assertTrue(token.hasRole(adminRole, newAdmin));
+
+        // New admin can grant roles too
+        vm.prank(newAdmin);
+        token.grantRole(MINTER_ROLE, user);
+        assertTrue(token.hasRole(MINTER_ROLE, user));
+    }
+
+    /// @notice A role holder cannot renounce their own role.
+    function test_RevertIf_RenounceRole() public {
+        vm.prank(bridge);
+        vm.expectRevert(TelcoinV3.CannotRenounceRole.selector);
+        token.renounceRole(MINTER_ROLE, bridge);
+    }
+
+    /// @notice The DEFAULT_ADMIN_ROLE holder cannot renounce either.
+    function test_RevertIf_AdminCannotRenounceRole() public {
+        bytes32 adminRole = token.DEFAULT_ADMIN_ROLE();
+        vm.prank(owner);
+        vm.expectRevert(TelcoinV3.CannotRenounceRole.selector);
+        token.renounceRole(adminRole, owner);
+    }
 }

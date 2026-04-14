@@ -2,6 +2,8 @@
 pragma solidity ^0.8.26;
 
 import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -21,6 +23,7 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
 
     error SupplyCapExceeded();
+    error CannotRenounceRole();
 
     /**
      * @dev Constructor that optionally mints an initial supply to the admin address
@@ -61,6 +64,19 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
     /// @notice Rescue ERC20 tokens accidentally sent to this contract.
     function rescueTokens(address _token, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         IERC20(_token).safeTransfer(msg.sender, _amount);
+    }
+
+    // --------------
+    // Access Control
+    // --------------
+
+    /**
+     * @notice Disabled — roles may only be revoked by an admin, never self-renounced.
+     * @dev Overrides AccessControl.renounceRole to prevent any role holder, including
+     *      the DEFAULT_ADMIN_ROLE, from voluntarily giving up their role.
+     */
+    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
+        revert CannotRenounceRole();
     }
 
     // --------
