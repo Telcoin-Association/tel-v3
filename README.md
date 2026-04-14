@@ -53,7 +53,6 @@ This project implements a migration system from OldToken (2 decimals) to Telcoin
 - **Ownable2Step**: ownership transfers require acceptance; `renounceOwnership()` is permanently disabled
 - **Owner functions:**
   - Pause/unpause bridge
-  - Withdraw native TEL reserve via `withdrawNative(amount)`
   - Rescue accidentally sent ERC20 tokens via `rescueTokens(token, amount)`
   - Configure LayerZero delegate via `setDelegate()`
 

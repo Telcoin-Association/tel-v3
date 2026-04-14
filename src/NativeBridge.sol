@@ -28,9 +28,13 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     using SafeERC20 for IERC20;
 
+    // ~ Events ~
+
+    /// @notice Emitted when native TEL is sent directly to the contract to top up the reserve.
+    event ReserveFunded(address indexed funder, uint256 amount);
+
     // ~ Errors ~
 
-    error WithdrawFailed();
     error CannotRenounceOwnership();
 
     // ~ Constructor ~
@@ -47,7 +51,9 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     // ~ Receive ~
 
     /// @notice Allows direct funding of the adapter's native TEL reserve.
-    receive() external payable {}
+    receive() external payable {
+        emit ReserveFunded(msg.sender, msg.value);
+    }
 
     // ~ NativeOFTAdapter Overrides ~
 
@@ -80,17 +86,6 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     // ~ Permissioned Methods ~
 
     /**
-     * @notice Withdraw native TEL from the adapter reserve.
-     * @dev The adapter accumulates native TEL as users bridge out to satellite chains.
-     *      Owner can withdraw at any time, e.g. to rebalance reserves cross-chain.
-     * @param _amount Amount of native TEL to withdraw in wei
-     */
-    function withdrawNative(uint256 _amount) external onlyOwner {
-        (bool success, ) = payable(msg.sender).call{value: _amount}("");
-        if (!success) revert WithdrawFailed();
-    }
-
-    /**
      * @notice Rescue ERC20 tokens accidentally sent to this contract.
      */
     function rescueTokens(address _token, uint256 _amount) external onlyOwner {
@@ -111,7 +106,7 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
         Ownable2Step._transferOwnership(newOwner);
     }
 
-    /// @notice Disabled — renouncing ownership would permanently brick pause and withdraw.
+    /// @notice Disabled — renouncing ownership would permanently brick pause and rescue.
     function renounceOwnership() public override onlyOwner {
         revert CannotRenounceOwnership();
     }

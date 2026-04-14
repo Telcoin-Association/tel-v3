@@ -137,7 +137,6 @@ onlyOwner functions (TelcoinBridge):
 onlyOwner functions (NativeBridge):
   - pause()
   - unpause()
-  - withdrawNative()
   - rescueTokens()
   - setDelegate() (inherited from OApp)
   - transferOwnership() / acceptOwnership()
@@ -404,7 +403,7 @@ BURN_ADDRESS == 0x000000000000000000000000000000000000dEaD (constant)
 
 ```
 t < migration_end_time AND !paused → migrations allowed
-t ≥ migration_end_time OR paused → migrations blocked
+t ≥ migration_end_time OR paused ��� migrations blocked
 ```
 
 **Properties**:
@@ -582,8 +581,7 @@ address(nativeBridge).balance < amountLD → lzReceive reverts (ETH transfer fai
 
 **Properties**:
 
-- Owner monitors and tops up the reserve via direct ETH transfer or `receive()`
-- Owner may rebalance by calling `withdrawNative()` and bridging TEL back
+- Owner monitors and tops up the reserve via direct ETH transfer (triggers `receive()`)
 
 ### N3: Correct msg.value Enforcement
 

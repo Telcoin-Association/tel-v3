@@ -30,32 +30,6 @@ contract NativeBridgeTest is BaseSetup {
     // Permissioned Functions Tests
     // ----------------------------
 
-    /// @notice Owner can withdraw native TEL from the reserve.
-    function test_WithdrawNative() public {
-        uint256 withdrawAmount = 100 ether;
-        uint256 ownerBefore = owner.balance;
-
-        vm.prank(owner);
-        nativeBridge.withdrawNative(withdrawAmount);
-
-        assertEq(address(nativeBridge).balance, NATIVE_RESERVE - withdrawAmount);
-        assertEq(owner.balance, ownerBefore + withdrawAmount);
-    }
-
-    /// @notice withdrawNative reverts when called by a non-owner.
-    function test_WithdrawNative_RevertNotOwner() public {
-        vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-        nativeBridge.withdrawNative(1 ether);
-    }
-
-    /// @notice withdrawNative reverts when the requested amount exceeds the reserve balance.
-    function test_WithdrawNative_RevertInsufficientBalance() public {
-        vm.prank(owner);
-        vm.expectRevert(NativeBridge.WithdrawFailed.selector);
-        nativeBridge.withdrawNative(NATIVE_RESERVE + 1);
-    }
-
     /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge.
     function test_RescueTokens() public {
         uint256 stuckAmount = 100 ether;
@@ -111,12 +85,15 @@ contract NativeBridgeTest is BaseSetup {
         nativeBridge.unpause();
     }
 
-    /// @notice The bridge accept native ETH sent directly, increasing the reserve.
+    /// @notice The bridge accepts native ETH sent directly, increasing the reserve and emitting ReserveFunded.
     function test_Receive_DirectFunding() public {
         uint256 reserveBefore = address(nativeBridge).balance;
         uint256 fundAmount = 50 ether;
 
         vm.deal(user1, fundAmount);
+        vm.expectEmit(true, false, false, true);
+        emit NativeBridge.ReserveFunded(user1, fundAmount);
+
         vm.prank(user1);
         (bool success, ) = address(nativeBridge).call{value: fundAmount}("");
 
