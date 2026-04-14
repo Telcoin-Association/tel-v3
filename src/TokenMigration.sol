@@ -30,10 +30,6 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     /// denominated using TelcoinV3's 18 decimals
     uint256 public totalMigrated;
 
-    /// @notice The total amount of old TEL burned via this contract,
-    /// denominated using the old token's 2 decimals
-    uint256 public totalOldTokenBurned;
-
     /// @notice The timestamp when migration has come to a conclusion. All attempts to migrate will
     /// revert if block.timestamp is beyond migrationExpiry.
     uint256 public migrationExpiry;
@@ -83,7 +79,6 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
         // convert from 2 decimals to 18 decimals
         amountNewToken = getAmountOut(userBalance);
         totalMigrated += amountNewToken;
-        totalOldTokenBurned += userBalance;
 
         // transfer oldToken from user to burn address (locked permanently)
         oldToken.safeTransferFrom(msg.sender, BURN_ADDRESS, userBalance);
@@ -155,5 +150,14 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      */
     function getAmountOut(uint256 amountIn) public pure returns (uint256) {
         return amountIn * DECIMAL_MULTIPLIER;
+    }
+
+    /**
+     * @notice Returns the total amount of old TEL burned via this contract, denominated in the
+     *         old token's 2 decimals.
+     * @dev Derived from totalMigrated — always exact since DECIMAL_MULTIPLIER divides evenly.
+     */
+    function totalOldTokenBurned() external view returns (uint256) {
+        return totalMigrated / DECIMAL_MULTIPLIER;
     }
 }
