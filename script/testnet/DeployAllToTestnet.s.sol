@@ -148,7 +148,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             string memory rpcUrl = allChains[i].rpc_url;
 
             vm.createSelectFork(rpcUrl);
-            vm.startBroadcast(_deployer);
+            vm.startBroadcast(_pk);
 
             console.log("Deploying for chain:", allChains[i].chainName);
 
@@ -171,7 +171,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             string memory rpcUrl = allChains[i].rpc_url;
 
             vm.selectFork(getRuntimeData[rpcUrl].forkId);
-            vm.startBroadcast(_deployer);
+            vm.startBroadcast(_pk);
 
             IOAppCore bridge = IOAppCore(getRuntimeData[rpcUrl].bridgeAddress);
 
