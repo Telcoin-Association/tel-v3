@@ -76,7 +76,10 @@ contract TelcoinBridgeLzReceiveTest is BaseSetup {
     /// @notice lzReceive mints exactly the correct ERC20 amount for any valid recipient and shared-decimal amount.
     function testFuzz_LzReceive(address recipient, uint64 amountSD) public {
         vm.assume(recipient != address(0));
-        vm.assume(amountSD > 0);
+
+        // Bound amountSD so the resulting mint cannot push totalSupply over the 100B cap
+        uint256 maxSD = (telcoinB.MIGRATION_SUPPLY_CAP() - telcoinB.totalSupply()) / 1e12;
+        amountSD = uint64(bound(uint256(amountSD), 1, maxSD));
 
         // amountLD is the local-decimal amount after SD → LD conversion
         uint256 amountLD = uint256(amountSD) * 1e12;

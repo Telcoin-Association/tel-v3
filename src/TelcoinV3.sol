@@ -20,7 +20,7 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
 
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
 
-    error InvalidMintAmount();
+    error SupplyCapExceeded();
 
     /**
      * @dev Constructor that optionally mints an initial supply to the admin address
@@ -28,7 +28,7 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
      * @param admin_ The owner (Telcoin TAO Governance Safe)
      */
     constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") {
-        if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert InvalidMintAmount();
+        if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
         _mint(admin_, initialSupply_);
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
     }
@@ -40,6 +40,7 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
     /// @notice Mint tokens. Only callable by MINTER_ROLE
     function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
         _mint(to, amount);
+        if (totalSupply() > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
     }
 
     /// @notice Burn tokens. Only callable by BURNER_ROLE
