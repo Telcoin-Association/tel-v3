@@ -105,6 +105,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
     // SetUp
     // -----
     
+    /// @notice Loads the deployer key and populates the chain list before run().
     function setUp() public {
         _setup();
 
@@ -138,6 +139,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
     // Script
     // ------
 
+    /// @notice Deploys all contracts to every configured chain, then wires LayerZero peers.
     function run() public {
 
         // Deploy
@@ -194,6 +196,16 @@ contract DeployAllToTestnet is DeployUtility, Roles {
     // Core Deploy
     // -----------
 
+    /**
+     * @notice Deploys and fully configures all contracts for a single chain.
+     * @dev Skips any contract already deployed at the expected CREATE3 address.
+     *      Role grants and bridge authorization are also idempotent.
+     * @param networkData Chain-specific parameters (name, endpoint, initial supply, etc.)
+     * @return token     Deployed TelcoinV3 address
+     * @return migrator  Deployed TokenMigration address
+     * @return wrapper   Deployed MintBurnWrapper address
+     * @return bridge    Deployed TelcoinBridge address
+     */
     function _deployAndConfigure(NetworkData memory networkData) internal returns (address token, address migrator, address wrapper, address bridge) {
 
         // 1. Deploy
@@ -212,7 +224,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
 
         TelcoinV3 telcoinContract = TelcoinV3(token);
 
-        // MintBurnWrapper holds the burn/mint roles — the bridge delegates through it
+        // MintBurnWrapper holds the burn/mint roles
         if (!telcoinContract.hasRole(MINTER_ROLE, wrapper)) {
             telcoinContract.grantRole(MINTER_ROLE, wrapper);
         }
@@ -252,6 +264,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
     // Individual Deployments
     // ----------------------
 
+    /// @notice Deploys legacy Telcoin (^0.4.18) using deployCode to bypass pragma incompatibility.
     function _deployLegacyTelcoin() internal returns (address) {
         // Deploy legacy Telcoin using deployCode to handle incompatible pragma (^0.4.18)
         // Constructor takes a distributor address that receives the total supply
@@ -261,6 +274,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         return legacyTelcoin;
     }
 
+    /// @notice Deploys TelcoinV3 via CREATE3. Mints `initSupply` to TESTNET_ADMIN at construction.
     function _deployTelcoinV3(uint256 initSupply) internal returns (address) {
         // build deployment params
         bytes memory telcoinV3Params = abi.encode(
@@ -281,6 +295,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         return contractAddress;
     }
 
+    /// @notice Deploys TokenMigration via CREATE3. Grants MINTER_ROLE in _deployAndConfigure.
     function _deployTelcoinMigration(address legacyToken, address telcoinV3) internal returns (address) {
         // build deployment params
         bytes memory telcoinMigratorParams = abi.encode(
@@ -303,6 +318,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         return contractAddress;
     }
 
+    /// @notice Deploys MintBurnWrapper via CREATE3. Receives MINTER_ROLE/BURNER_ROLE in _deployAndConfigure.
     function _deployMintBurnWrapper(address telcoinV3) internal returns (address) {
         // build deployment params
         bytes memory wrapperParams = abi.encode(
@@ -323,6 +339,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
         return contractAddress;
     }
 
+    /// @notice Deploys TelcoinBridge via CREATE3 with MintBurnWrapper as the minterBurner.
     function _deployTelcoinBridge(address telcoinV3, address wrapper, address endpoint) internal returns (address) {
         // build deployment params
         bytes memory telcoinBridgeParams = abi.encode(
