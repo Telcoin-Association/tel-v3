@@ -38,9 +38,11 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 ```
 ∀ time t:
   whole_v2_remaining(t) + whole_v3_minted_via_migration(t) == INITIAL_TOTAL_SUPPLY_whole
-  i.e. (oldToken.totalSupply() - totalOldTokenBurned) / 1
+  i.e. (oldToken.totalSupply() - migration.totalOldTokenBurned()) / 1
        + totalMigrated / DECIMAL_MULTIPLIER
        == INITIAL_TOTAL_SUPPLY_whole
+
+  where totalOldTokenBurned() == totalMigrated / DECIMAL_MULTIPLIER  (derived view, not storage)
 ```
 
 **Properties**:
@@ -102,7 +104,7 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 **Invariant**: The migration contract must hold `MINTER_ROLE` on TelcoinV3 for migrations to succeed
 
 ```
-∀ migration m:
+��� migration m:
   pre(m): telcoinV3.hasRole(MINTER_ROLE, migrationContract) == true
 ```
 
@@ -146,6 +148,11 @@ onlyOwner functions (MintBurnWrapper):
   - revokeBridge()
   - transferOwnership() / acceptOwnership()
 
+onlyRole(DEFAULT_ADMIN_ROLE) functions (TelcoinV3):
+  - rescueBurn(from, amount)   ← burns without approval; governance emergency only
+  - rescueTokens(token, amount)
+  - grantRole() / revokeRole()
+
 onlyBridge functions (MintBurnWrapper):
   - mint()
   - burn()
@@ -156,8 +163,29 @@ onlyBridge functions (MintBurnWrapper):
 - Owner is initially set to governance multisig
 - All contracts use Ownable2Step: `transferOwnership()` sets a pending owner, transfer only finalizes when the new owner calls `acceptOwnership()`
 - `renounceOwnership()` is permanently disabled on `TelcoinBridge`, `NativeBridge`, and `MintBurnWrapper` (reverts with `CannotRenounceOwnership`)
+- `renounceRole()` is permanently disabled on `TelcoinV3` for all callers including `DEFAULT_ADMIN_ROLE` (reverts with `CannotRenounceRole`) — roles can only be revoked by an admin
 - `TelcoinBridge` holds no roles on `TelcoinV3` directly — mint/burn authority flows through `MintBurnWrapper`
 - No backdoor or emergency functions bypass ownership
+
+### S1b: Burn Authorization
+
+**Invariant**: `TelcoinV3.burn()` requires explicit approval from the token holder; `rescueBurn()` bypasses approval but is restricted to `DEFAULT_ADMIN_ROLE`
+
+```
+∀ call to burn(from, amount) by BURNER_ROLE holder b:
+  allowance(from, b) < amount → revert ERC20InsufficientAllowance
+
+∀ call to rescueBurn(from, amount):
+  caller lacks DEFAULT_ADMIN_ROLE → revert AccessControlUnauthorizedAccount
+  caller has DEFAULT_ADMIN_ROLE   → burns without allowance check
+```
+
+**Properties**:
+
+- A compromised `BURNER_ROLE` (e.g. `MintBurnWrapper`) cannot drain wallets that have not approved it
+- Users bridging must `approve(wrapper, amount)` before calling `send()` on `TelcoinBridge`
+- `rescueBurn` is intentionally separate from `BURNER_ROLE` — normal bridge operation never touches it
+- Governance uses `rescueBurn` only in emergency (e.g. confirmed exploit, hacker balance)
 
 ### S2: Pausability Safety
 
@@ -320,16 +348,15 @@ After migration_end_time:
 
 ```
 At any time t:
-  totalMigrated == totalOldTokenBurned * DECIMAL_MULTIPLIER
-  oldToken.balanceOf(BURN_ADDRESS) >= totalOldTokenBurned
+  totalOldTokenBurned() == totalMigrated / DECIMAL_MULTIPLIER
+  oldToken.balanceOf(BURN_ADDRESS) >= totalOldTokenBurned()
 ```
 
 **Properties**:
 
-- `totalOldTokenBurned` and `totalMigrated` are updated atomically within `migrate()`
+- `totalMigrated` is the single source of truth; `totalOldTokenBurned()` is a derived view function (`totalMigrated / DECIMAL_MULTIPLIER`) — not a storage slot
 - Burned tokens correspond exactly to minted new tokens
 - No state corruption possible; ReentrancyGuard prevents concurrent state modification
-- Both values are public state variables, directly readable on-chain
 
 ### ST2: Event Emission
 
@@ -463,7 +490,7 @@ User mistake flow:
 
 1. **Clear Documentation**: Comprehensive user guides and warnings
 2. **Role Management**: Ensure migration contract holds `MINTER_ROLE` on TelcoinV3 before launch; revoke post-expiry
-3. **Monitoring**: Real-time tracking of migration progress via `totalMigrated` and `totalOldTokenBurned`
+3. **Monitoring**: Real-time tracking of migration progress via `totalMigrated` (storage) and `totalOldTokenBurned()` (derived view)
 4. **Grace Period**: Consider extension mechanisms if needed
 5. **Support Channels**: Dedicated assistance for migration issues
 6. **Recovery Mechanism**: Governance can recover accidentally sent OldTokens to help users complete migration
@@ -611,11 +638,16 @@ msg.value != nativeFee + removeDust(amount) → revert IncorrectMessageValue(pro
 
 ### W1: Authorization Gate
 
-**Invariant**: Only addresses in `authorizedBridges` may call `mint` or `burn`
+**Invariant**: Only the single authorized `bridge` address may call `mint` or `burn`
 
 ```
 ∀ call to mint(to, amount) or burn(from, amount):
-  authorizedBridges[msg.sender] == false → revert UnauthorizedBridge
+  msg.sender != bridge → revert UnauthorizedBridge
+
+Idempotency guards:
+  authorizeBridge(_bridge) where bridge == _bridge → revert BridgeAlreadySet
+  revokeBridge(_bridge) where bridge == address(0) → revert BridgeNotSet
+  revokeBridge(_bridge) where bridge != _bridge    → revert UnauthorizedBridge
 ```
 
 ### W2: Role Delegation Stability
@@ -658,10 +690,12 @@ token != address(0) (enforced by constructor revert)
 
 ### Medium Priority
 
-1. Event emission completeness and accuracy (`OFTSent`, `OFTReceived`, `BridgeAuthorized`, `BridgeRevoked`)
+1. Event emission completeness and accuracy (`OFTSent`, `OFTReceived`, `BridgeAuthorized`, `BridgeRevoked`, `BridgeMinted`, `BridgeBurned`, `ReserveFunded`)
 2. Pause mechanism effectiveness on both send and receive paths
 3. `NativeBridge` single-instance constraint enforcement
 4. `MintBurnWrapper` role stability on TelcoinV3
+5. `burn()` allowance enforcement — verify a compromised wrapper cannot drain unapproved wallets
+6. `rescueBurn()` access control — verify `BURNER_ROLE` holders cannot call it; only `DEFAULT_ADMIN_ROLE`
 
 ### Low Priority
 
