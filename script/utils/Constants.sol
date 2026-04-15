@@ -2,6 +2,13 @@
 pragma solidity ^0.8.30;
 
 // -------------
+// EVM Chain IDs
+// -------------
+
+uint256 constant ETH_SEPOLIA_CHAIN_ID = 11155111;
+uint256 constant BASE_SEPOLIA_CHAIN_ID = 84532;
+
+// -------------
 // Layer Zero V2
 // -------------
 

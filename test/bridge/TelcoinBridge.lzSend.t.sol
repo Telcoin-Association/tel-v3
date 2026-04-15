@@ -3,144 +3,115 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
-import {ITelcoinBridge} from "../../src/interfaces/ITelcoinBridge.sol";
+import {MintBurnWrapper} from "../../src/MintBurnWrapper.sol";
+import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
+import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 
-/**
- * @title TelcoinBridgeLzSendTest
- * @notice This test file is meant to verify the basic functions of the TelcoinBridge::bridge function.
- */
 contract TelcoinBridgeLzSendTest is BaseSetup {
     function setUp() public override {
         super.setUp();
     }
 
-    // ------------
-    // Bridge Tests
-    // ------------
+    // ----------
+    // Send Tests
+    // ----------
 
-    /// @dev Verifies successful call to TelcoinBridge::bridge with no expectation of txn landing.
+    /// @notice send() burns ERC20 TEL from the sender and dispatches the LZ message.
     function test_LzSend_Success() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
         uint256 preSupply = telcoinA.totalSupply();
-
-        // Get quote
-        MessagingFee memory fee = bridgeA.quote(EID_B, user2, bridgeAmount, options);
-
-        // Check balances before
         uint256 user1BalanceBefore = telcoinA.balanceOf(user1);
 
-        // Bridge tokens
-        vm.prank(user1);
-        MessagingReceipt memory receipt = bridgeA.bridge{value: fee.nativeFee}(
-            EID_B,
-            user2,
-            bridgeAmount,
-            options
-        );
+        SendParam memory sendParam = _createSendParam(EID_B, user2, bridgeAmount, options);
 
-        // Verify tokens were burned on chain A
+        vm.startPrank(user1);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
+        (MessagingReceipt memory receipt, ) = bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
+        vm.stopPrank();
+
         assertEq(telcoinA.balanceOf(user1), user1BalanceBefore - bridgeAmount);
         assertEq(telcoinA.totalSupply(), preSupply - bridgeAmount);
-
-        // Verify receipt
         assertTrue(receipt.guid != bytes32(0));
         assertEq(receipt.fee.nativeFee, fee.nativeFee);
     }
 
-    /// @dev Verifies a successful call to bridge emits the intended `BridgeSent` event.
+    /// @notice send() emits OFTSent with the correct dstEid, sender, and amounts.
     function test_LzSend_EmitsEvent() public {
         uint256 bridgeAmount = 1000 ether;
         bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, bridgeAmount, options);
 
         vm.startPrank(user1);
-        MessagingFee memory fee = bridgeA.quote(EID_B, user1, bridgeAmount, options);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
 
-        // Check event (guid is unpredictable, so we use false for first indexed param)
-        vm.expectEmit(false, true, true, true);
-        emit BridgeSent(bytes32(0), EID_B, user1, user1, bridgeAmount);
+        // OFTSent has 2 indexed params (guid, fromAddress); dstEid is non-indexed data
+        vm.expectEmit(false, true, false, true);
+        emit OFTSent(bytes32(0), EID_B, user1, bridgeAmount, bridgeAmount);
 
-        bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, bridgeAmount, options);
+        bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
         vm.stopPrank();
     }
 
-    /// @dev Verifies if amount == 0, contract reverts with the `ZeroAmount` error.
-    function test_LzSend_RevertZeroAmount() public {
-        bytes memory options = _createBasicOptions();
-
-        vm.startPrank(user1);
-        vm.expectRevert(ITelcoinBridge.ZeroAmount.selector);
-        bridgeA.bridge{value: 0.1 ether}(EID_B, user1, 0, options);
-        vm.stopPrank();
-    }
-
-    /// @dev Verifies if recipient == address(0), contract reverts with the `ZeroAddress` error.
-    function test_LzSend_RevertZeroRecipient() public {
-        bytes memory options = _createBasicOptions();
-
-        vm.startPrank(user1);
-        vm.expectRevert(ITelcoinBridge.ZeroAddress.selector);
-        bridgeA.bridge{value: 0.1 ether}(EID_B, address(0), 1000, options);
-        vm.stopPrank();
-    }
-
-    /// @dev Verifies if contract is paused, a call to bridge will revert.
+    /// @notice send() reverts with EnforcedPause when the bridge is paused.
     function test_LzSend_RevertWhenPaused() public {
         bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, options);
 
         vm.prank(owner);
         bridgeA.pause();
 
         vm.startPrank(user1);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        bridgeA.bridge{value: 0.1 ether}(EID_B, user1, 1000, options);
+        bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
         vm.stopPrank();
     }
 
-    /// @dev Verifies if contract is bridged to a chain with no peer, contract reverts.
+    /// @notice send() reverts with NoPeer when no peer is configured for the destination EID.
     function test_LzSend_RevertNoPeer() public {
-        // Deploy a new bridge without setting peer
+        // Deploy a bridge with no peer set
+        vm.startPrank(owner);
         TelcoinBridge bridgeNoPeer = new TelcoinBridge(
             address(telcoinA),
+            IMintableBurnable(address(wrapperA)),
             address(endpointA),
             owner
         );
-
-        // Set bridgeNoPeer as the bridge so it can burn
-        vm.startPrank(owner);
-        //telcoinA.setBridge(address(bridgeNoPeer));
-        telcoinA.grantRole(MINTER_ROLE, address(bridgeNoPeer));
-        telcoinA.grantRole(BURNER_ROLE, address(bridgeNoPeer));
+        wrapperA.authorizeBridge(address(bridgeNoPeer));
         vm.stopPrank();
 
-        bytes memory options = _createBasicOptions();
+        SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, _createBasicOptions());
 
+        // quoteSend also calls _getPeerOrRevert internally, so skip it and use a hardcoded fee
         vm.startPrank(user1);
         vm.expectRevert(abi.encodeWithSelector(IOAppCore.NoPeer.selector, EID_B));
-        bridgeNoPeer.bridge{value: 0.1 ether}(EID_B, user1, 1000, options);
+        bridgeNoPeer.send{value: 0.1 ether}(sendParam, MessagingFee(0.1 ether, 0), user1);
         vm.stopPrank();
     }
 
-    /// @dev Uses fuzzing to verify successful call to TelcoinBridge::bridge with no expectation of
-    ///      txn landing.
+    /// @notice send() burns exactly the dust-adjusted amount for any valid input amount.
     function testFuzz_LzSend(uint256 amount) public {
-        // Bound amount to valid range
-        amount = bound(amount, 1, USER_BALANCE);
+        // Minimum 1e12 to avoid full dust removal; max USER_BALANCE
+        amount = bound(amount, 1e12, USER_BALANCE);
 
         bytes memory options = _createBasicOptions();
         uint256 balanceBefore = telcoinA.balanceOf(user1);
         uint256 preSupply = telcoinA.totalSupply();
 
+        SendParam memory sendParam = _createSendParam(EID_B, user1, amount, options);
+
         vm.startPrank(user1);
-        MessagingFee memory fee = bridgeA.quote(EID_B, user1, amount, options);
-        bridgeA.bridge{value: fee.nativeFee}(EID_B, user1, amount, options);
+        MessagingFee memory fee = bridgeA.quoteSend(sendParam, false);
+        bridgeA.send{value: fee.nativeFee}(sendParam, fee, user1);
         vm.stopPrank();
 
-        // Verify burn on source chain
-        assertEq(telcoinA.balanceOf(user1), balanceBefore - amount);
-        assertEq(telcoinA.totalSupply(), preSupply - amount);
+        // Dust-removed amount is what was actually burned
+        uint256 amountSent = (amount / 1e12) * 1e12;
+        assertEq(telcoinA.balanceOf(user1), balanceBefore - amountSent);
+        assertEq(telcoinA.totalSupply(), preSupply - amountSent);
     }
 }
