@@ -36,6 +36,8 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     // ~ Errors ~
 
     error CannotRenounceOwnership();
+    error ZeroAddress();
+    error ZeroAmount();
 
     // ~ Constructor ~
 
@@ -88,8 +90,10 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     /**
      * @notice Rescue ERC20 tokens accidentally sent to this contract.
      */
-    function rescueTokens(address _token, uint256 _amount) external onlyOwner {
-        IERC20(_token).safeTransfer(msg.sender, _amount);
+    function rescueTokens(address _token, uint256 _amount, address _to) external onlyOwner {
+        if (_to == address(0)) revert ZeroAddress();
+        if (_amount == 0) revert ZeroAmount();
+        IERC20(_token).safeTransfer(_to, _amount);
     }
 
     function pause() external onlyOwner { _pause(); }

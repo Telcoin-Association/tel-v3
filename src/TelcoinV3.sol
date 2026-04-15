@@ -24,6 +24,8 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
 
     error SupplyCapExceeded();
     error CannotRenounceRole();
+    error ZeroAddress();
+    error ZeroAmount();
 
     /**
      * @dev Constructor that optionally mints an initial supply to the admin address
@@ -80,8 +82,10 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
     }
 
     /// @notice Rescue ERC20 tokens accidentally sent to this contract.
-    function rescueTokens(address _token, uint256 _amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        IERC20(_token).safeTransfer(msg.sender, _amount);
+    function rescueTokens(address _token, uint256 _amount, address _to) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_to == address(0)) revert ZeroAddress();
+        if (_amount == 0) revert ZeroAmount();
+        IERC20(_token).safeTransfer(_to, _amount);
     }
 
     // --------------

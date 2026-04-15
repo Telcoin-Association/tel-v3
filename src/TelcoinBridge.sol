@@ -36,6 +36,8 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     // ~ Errors ~
 
     error CannotRenounceOwnership();
+    error ZeroAddress();
+    error ZeroAmount();
 
     // ~ Constructor ~
 
@@ -53,6 +55,15 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     ) MintBurnOFTAdapter(_token, _minterBurner, _endpoint, _delegate) Ownable(_delegate) {}
 
     // ~ OFTCore Overrides ~
+
+    /**
+     * @notice Signals that callers must approve the MintBurnWrapper before bridging.
+     * @dev Overrides MintBurnOFTAdapter.approvalRequired() which returns false by default.
+     *      TelcoinV3.burn() enforces an allowance check, so the wrapper must be approved.
+     */
+    function approvalRequired() external pure override returns (bool) {
+        return true;
+    }
 
     /**
      * @notice Pauses the bridge — blocks send and receive.
@@ -84,8 +95,10 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     /**
      * @notice Rescue ERC20 tokens accidentally sent to this contract.
      */
-    function rescueTokens(address _token, uint256 _amount) external onlyOwner {
-        IERC20(_token).safeTransfer(msg.sender, _amount);
+    function rescueTokens(address _token, uint256 _amount, address _to) external onlyOwner {
+        if (_to == address(0)) revert ZeroAddress();
+        if (_amount == 0) revert ZeroAmount();
+        IERC20(_token).safeTransfer(_to, _amount);
     }
 
     function pause() external onlyOwner { _pause(); }

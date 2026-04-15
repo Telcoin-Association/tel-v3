@@ -30,26 +30,40 @@ contract NativeBridgeTest is BaseSetup {
     // Permissioned Functions Tests
     // ----------------------------
 
-    /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge.
+    /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge to a specified address.
     function test_RescueTokens() public {
         uint256 stuckAmount = 100 ether;
         vm.prank(user1);
         telcoinA.transfer(address(nativeBridge), stuckAmount);
 
-        uint256 ownerBefore = telcoinA.balanceOf(owner);
+        uint256 user2Before = telcoinA.balanceOf(user2);
 
         vm.prank(owner);
-        nativeBridge.rescueTokens(address(telcoinA), stuckAmount);
+        nativeBridge.rescueTokens(address(telcoinA), stuckAmount, user2);
 
         assertEq(telcoinA.balanceOf(address(nativeBridge)), 0);
-        assertEq(telcoinA.balanceOf(owner), ownerBefore + stuckAmount);
+        assertEq(telcoinA.balanceOf(user2), user2Before + stuckAmount);
     }
 
     /// @notice rescueTokens reverts when called by a non-owner.
     function test_RescueTokens_RevertNotOwner() public {
         vm.prank(user1);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-        nativeBridge.rescueTokens(address(telcoinA), 100);
+        nativeBridge.rescueTokens(address(telcoinA), 100, user2);
+    }
+
+    /// @notice rescueTokens reverts when _to is the zero address.
+    function test_RescueTokens_RevertZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(NativeBridge.ZeroAddress.selector);
+        nativeBridge.rescueTokens(address(telcoinA), 100, address(0));
+    }
+
+    /// @notice rescueTokens reverts when _amount is zero.
+    function test_RescueTokens_RevertZeroAmount() public {
+        vm.prank(owner);
+        vm.expectRevert(NativeBridge.ZeroAmount.selector);
+        nativeBridge.rescueTokens(address(telcoinA), 0, user2);
     }
 
     /// @notice Owner can pause the bridge.

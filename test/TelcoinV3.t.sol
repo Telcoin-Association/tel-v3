@@ -226,7 +226,7 @@ contract TelcoinV3Test is Test, Roles {
     // rescueTokens Tests
     // -------------------
 
-    /// @dev Admin can recover ERC20 tokens accidentally sent to the TelcoinV3 contract.
+    /// @dev Admin can recover ERC20 tokens accidentally sent to the TelcoinV3 contract to a specified address.
     function test_RescueTokens() public {
         uint256 stuckAmount = 100 ether;
 
@@ -234,13 +234,30 @@ contract TelcoinV3Test is Test, Roles {
         vm.prank(bridge);
         token.mint(address(token), stuckAmount);
 
-        uint256 adminBalanceBefore = token.balanceOf(owner);
+        uint256 user2Before = token.balanceOf(user2);
 
         vm.prank(owner);
-        token.rescueTokens(address(token), stuckAmount);
+        token.rescueTokens(address(token), stuckAmount, user2);
 
         assertEq(token.balanceOf(address(token)), 0);
-        assertEq(token.balanceOf(owner), adminBalanceBefore + stuckAmount);
+        assertEq(token.balanceOf(user2), user2Before + stuckAmount);
+    }
+
+    /// @dev rescueTokens reverts when _to is the zero address.
+    function test_RevertIf_RescueTokens_ZeroAddress() public {
+        vm.prank(bridge);
+        token.mint(address(token), 100 ether);
+
+        vm.prank(owner);
+        vm.expectRevert(TelcoinV3.ZeroAddress.selector);
+        token.rescueTokens(address(token), 100 ether, address(0));
+    }
+
+    /// @dev rescueTokens reverts when _amount is zero.
+    function test_RevertIf_RescueTokens_ZeroAmount() public {
+        vm.prank(owner);
+        vm.expectRevert(TelcoinV3.ZeroAmount.selector);
+        token.rescueTokens(address(token), 0, user2);
     }
 
     /// @dev rescueTokens reverts when called by an address without DEFAULT_ADMIN_ROLE.
@@ -252,7 +269,7 @@ contract TelcoinV3Test is Test, Roles {
         vm.expectRevert(
             abi.encodeWithSignature("AccessControlUnauthorizedAccount(address,bytes32)", attacker, bytes32(0))
         );
-        token.rescueTokens(address(token), 100 ether);
+        token.rescueTokens(address(token), 100 ether, user2);
     }
 
     /// @dev Verifies transfers fail after contract is paused
