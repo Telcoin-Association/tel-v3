@@ -36,12 +36,12 @@ import "../utils/Addresses.sol";
  *
  * Dry run (simulation):
  * ```
- * forge script script/testnet/DeployAllToTestnet.s.sol --multi
+ * forge script script/testnet/0_DeployAllToTestnet.s.sol --multi
  * ```
  *
  * Live deployment:
  * ```
- * forge script script/testnet/DeployAllToTestnet.s.sol --multi --broadcast --verify -vvvv
+ * forge script script/testnet/0_DeployAllToTestnet.s.sol --multi --broadcast --verify -vvvv
  * ```
  *
  * ## Deployment Order

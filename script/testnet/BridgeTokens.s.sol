@@ -169,6 +169,12 @@ contract BridgeTokens is DeployUtility {
 
         vm.startBroadcast(_pk);
 
+        // Approve MintBurnWrapper to burn tokens on behalf of the sender.
+        // TelcoinV3.burn() enforces an allowance check, so the wrapper must be approved first.
+        address minterBurner = address(bridge.minterBurner());
+        console.log("Approving MintBurnWrapper...");
+        token.approve(minterBurner, BRIDGE_AMOUNT);
+
         // Execute bridge
         console.log("Calling send()...");
         (MessagingReceipt memory receipt, ) = bridge.send{value: fee.nativeFee}(sendParam, fee, _deployer);
