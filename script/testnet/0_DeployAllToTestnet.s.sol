@@ -36,12 +36,12 @@ import "../utils/Addresses.sol";
  *
  * Dry run (simulation):
  * ```
- * forge script script/testnet/DeployAllToTestnet.s.sol --multi
+ * forge script script/testnet/0_DeployAllToTestnet.s.sol --multi
  * ```
  *
  * Live deployment:
  * ```
- * forge script script/testnet/DeployAllToTestnet.s.sol --multi --broadcast --verify -vvvv
+ * forge script script/testnet/0_DeployAllToTestnet.s.sol --multi --broadcast --verify -vvvv
  * ```
  *
  * ## Deployment Order
@@ -70,10 +70,10 @@ contract DeployAllToTestnet is DeployUtility, Roles {
 
     /// @dev TODO: Configure all constants
 
-    bytes32 internal constant RAW_TELCOIN_V3_SALT = keccak256("RAW_TELCOIN_V3_SALT_V0");
-    bytes32 internal constant RAW_TELCOIN_MIGRATION_SALT = keccak256("RAW_TELCOIN_MIGRATION_SALT_V1");
-    bytes32 internal constant RAW_MINT_BURN_WRAPPER_SALT = keccak256("RAW_MINT_BURN_WRAPPER_SALT_V0");
-    bytes32 internal constant RAW_TELCOIN_BRIDGE_SALT = keccak256("RAW_TELCOIN_BRIDGE_SALT_V0");
+    bytes32 internal constant RAW_TELCOIN_V3_SALT = keccak256("RAW_TELCOIN_V3_SALT_V2");
+    bytes32 internal constant RAW_TELCOIN_MIGRATION_SALT = keccak256("RAW_TELCOIN_MIGRATION_SALT_V2");
+    bytes32 internal constant RAW_MINT_BURN_WRAPPER_SALT = keccak256("RAW_MINT_BURN_WRAPPER_SALT_V2");
+    bytes32 internal constant RAW_TELCOIN_BRIDGE_SALT = keccak256("RAW_TELCOIN_BRIDGE_SALT_V2");
 
     uint256 internal constant INITIAL_TELV3_SUPPLY = 100_000_000 ether; // initial supply of 100M tokens per chain
     uint256 internal constant MIGRATION_DURATION = 365 * 1 days;
@@ -121,7 +121,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
                 evmChainId: ETH_SEPOLIA_CHAIN_ID,
                 legacyTel: _loadDeploymentAddress("eth-sepolia", "TelcoinLegacy"),
                 initialSupply: 100_000_000 ether,
-                mainChain: true
+                mainChain: false
             }
         ));
         allChains.push(NetworkData(

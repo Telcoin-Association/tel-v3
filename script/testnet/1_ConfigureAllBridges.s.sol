@@ -33,12 +33,12 @@ import "../utils/Constants.sol";
  *
  * Dry run (simulation):
  * ```
- * forge script script/testnet/ConfigureAllBridges.s.sol --multi
+ * forge script script/testnet/1_ConfigureAllBridges.s.sol --multi
  * ```
  *
  * Live execution:
  * ```
- * forge script script/testnet/ConfigureAllBridges.s.sol --multi --broadcast -vvvv
+ * forge script script/testnet/1_ConfigureAllBridges.s.sol --multi --broadcast -vvvv
  * ```
  *
  * ## Configuration

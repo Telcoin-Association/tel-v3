@@ -30,8 +30,6 @@ contract MigrateTokens is DeployUtility {
     // Variables
     // ---------
 
-    /// @dev Amount of legacy TEL to migrate
-    uint256 internal constant MIGRATE_AMOUNT = 100_000_000_000 * 10 ** 2;
     /// @dev Chain alias for loading deployment addresses
     string internal constant CHAIN_ALIAS = "eth-sepolia";
 
@@ -74,11 +72,9 @@ contract MigrateTokens is DeployUtility {
         console.log("Deployer TelcoinV3 Balance:", newBalanceBefore);
         console.log("");
 
-        require(legacyBalanceBefore >= MIGRATE_AMOUNT, "Insufficient legacy TEL balance");
-
         // Calculate expected new tokens (legacy has 2 decimals, new has 18)
         uint256 decimalMultiplier = migration.DECIMAL_MULTIPLIER();
-        uint256 expectedNewTokens = MIGRATE_AMOUNT * decimalMultiplier;
+        uint256 expectedNewTokens = legacyBalanceBefore * decimalMultiplier;
         console.log("Expected TelcoinV3 to receive:", expectedNewTokens);
         console.log("");
 
@@ -89,7 +85,7 @@ contract MigrateTokens is DeployUtility {
 
         // Step 1: Approve migration contract to spend legacy tokens
         console.log("Step 1: Approving migration contract...");
-        legacyToken.approve(migrationContract, MIGRATE_AMOUNT);
+        legacyToken.approve(migrationContract, legacyBalanceBefore);
 
         // Step 2: Execute migration
         console.log("Step 2: Calling migrate()...");
@@ -113,7 +109,7 @@ contract MigrateTokens is DeployUtility {
         // Verify state changes
         console.log("=== Verification ===");
 
-        bool legacyBurned = (legacyBalanceBefore - legacyBalanceAfter) == MIGRATE_AMOUNT;
+        bool legacyBurned = legacyBalanceAfter == 0;
         bool newReceived = (newBalanceAfter - newBalanceBefore) == expectedNewTokens;
 
         console.log("Legacy tokens burned correctly:", legacyBurned ? "PASS" : "FAIL");
