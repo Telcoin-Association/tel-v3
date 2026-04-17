@@ -1,0 +1,80 @@
+| _from                 | []                                 |
+| _to                   | []                                 |
+| _value                | []                                 |
+|                       | []                                 |
+| TelcoinV2.name        | []                                 |
+| TelcoinV2.symbol      | []                                 |
+| TelcoinV2.decimals    | []                                 |
+| TelcoinV2.totalSupply | []                                 |
+| TelcoinV2.balances    | ['SafeMath', '_value', 'balances'] |
+| TelcoinV2.allowed     | ['allowed']                        |
++-----------------------+------------------------------------+
+Function approve(address,uint256)
++-----------------------+--------------+
+| Variable              | Dependencies |
++-----------------------+--------------+
+| _spender              | []           |
+| _value                | []           |
+|                       | []           |
+| TelcoinV2.name        | []           |
+| TelcoinV2.symbol      | []           |
+| TelcoinV2.decimals    | []           |
+| TelcoinV2.totalSupply | []           |
+| TelcoinV2.balances    | []           |
+| TelcoinV2.allowed     | ['allowed']  |
++-----------------------+--------------+
+Function allowance(address,address)
++-----------------------+--------------+
+| Variable              | Dependencies |
++-----------------------+--------------+
+| _owner                | []           |
+| _spender              | []           |
+|                       | []           |
+| TelcoinV2.name        | []           |
+| TelcoinV2.symbol      | []           |
+| TelcoinV2.decimals    | []           |
+| TelcoinV2.totalSupply | []           |
+| TelcoinV2.balances    | []           |
+| TelcoinV2.allowed     | ['allowed']  |
++-----------------------+--------------+
+Function increaseApproval(address,uint256)
++-----------------------+--------------+
+| Variable              | Dependencies |
++-----------------------+--------------+
+| _spender              | []           |
+| _addedValue           | []           |
+|                       | []           |
+| TelcoinV2.name        | []           |
+| TelcoinV2.symbol      | []           |
+| TelcoinV2.decimals    | []           |
+| TelcoinV2.totalSupply | []           |
+| TelcoinV2.balances    | []           |
+| TelcoinV2.allowed     | ['allowed']  |
++-----------------------+--------------+
+Function decreaseApproval(address,uint256)
++-----------------------+--------------+
+| Variable              | Dependencies |
++-----------------------+--------------+
+| _spender              | []           |
+| _subtractedValue      | []           |
+|                       | []           |
+| oldValue              | ['allowed']  |
+| TelcoinV2.name        | []           |
+| TelcoinV2.symbol      | []           |
+| TelcoinV2.decimals    | []           |
+| TelcoinV2.totalSupply | []           |
+| TelcoinV2.balances    | []           |
+| TelcoinV2.allowed     | ['allowed']  |
++-----------------------+--------------+
+Function slitherConstructorConstantVariables()
++-----------------------+--------------+
+| Variable              | Dependencies |
++-----------------------+--------------+
+| TelcoinV2.name        | []           |
+| TelcoinV2.symbol      | []           |
+| TelcoinV2.decimals    | []           |
+| TelcoinV2.totalSupply | []           |
+| TelcoinV2.balances    | []           |
+| TelcoinV2.allowed     | []           |
++-----------------------+--------------+
+INFO:Slither:src/ analyzed (68 contracts)

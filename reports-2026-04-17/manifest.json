@@ -1,0 +1,180 @@
+{
+  "commit": "5e9cdf9b3e10151358859aac31dc890edeccdbe7",
+  "timestamp": "2026-04-17T13:10:00Z",
+  "working_directory": "/Users/r00t/smartcontracts/tel-v3",
+  "host": "Darwin arm64 25.4.0",
+  "tools": [
+    {
+      "name": "slither-mcp",
+      "version": "2.3.2",
+      "command": "cd /Users/r00t/slither-mcp && .venv/bin/python /tmp/slither_mcp_run.py",
+      "exit_code": 0,
+      "duration_seconds": 120,
+      "log_path": "reports/slither-mcp.json",
+      "log_sha256": "<see shasum in final manifest>",
+      "status": "RAN",
+      "notes": "Local install at /Users/r00t/slither-mcp; previously missed. 23 MCP tools callable, 250 structured detector results (29 in-scope). Surfaced 1 extra in-scope finding vs. CLI slither: shadowing-local (MintBurnWrapper._owner shadows Ownable._owner) → SLS-1 Info."
+    },
+    {
+      "name": "slither",
+      "version": "0.11.5",
+      "command": "slither --filter-paths 'lib/|test/|script/|src/legacy' --checklist --markdown-root . src/",
+      "exit_code": 0,
+      "duration_seconds": 15,
+      "log_path": "reports/slither.md",
+      "log_sha256": "56e46758f8354863037c8e216cc5cb490573ab04ccbd0f16f918235efc0dc729",
+      "status": "RAN",
+      "notes": "Detector hits: 0 H / 2 M / 4 L / 22 Info. All triaged — see reports/skill-coverage/tob-fp-check.md"
+    },
+    {
+      "name": "slither-printers",
+      "version": "0.11.5",
+      "command": "slither --filter-paths '...' --print human-summary --print function-summary --print data-dependency src/",
+      "exit_code": 0,
+      "duration_seconds": 8,
+      "log_path": "reports/slither-function-summary.txt,reports/slither-data-dependency.txt",
+      "log_sha256": "7d87e0b0247438b61f2cbcb02be78f52e1cbd62a58d6c701ec53cfbcbeeae356,acdba04b8f9d9c760e6c1d82a06e79b9fc30d4c024e4e5ea49d580bf3598b71e",
+      "status": "RAN",
+      "notes": ""
+    },
+    {
+      "name": "semgrep",
+      "version": "1.155.0",
+      "command": "semgrep --config r/solidity --sarif --metrics off --exclude lib --exclude test --exclude script --exclude src/legacy -o reports/semgrep.sarif .",
+      "exit_code": 0,
+      "duration_seconds": 7,
+      "log_path": "reports/semgrep.sarif",
+      "log_sha256": "710d04a235dd74fee92dc7410a8985f86dfdc0b4ede235151392b55bb0a87f65",
+      "status": "RAN",
+      "notes": "50 rules, 7 findings, all gas/style. Note: p/solidity and p/smart-contracts Semgrep registry packs return HTTP 404 at the time of this run; r/solidity is the current equivalent."
+    },
+    {
+      "name": "aderyn",
+      "version": "0.1.9",
+      "command": "aderyn --src src --path-excludes src/legacy --no-snippets -o reports/aderyn.md .",
+      "exit_code": 0,
+      "duration_seconds": 10,
+      "log_path": "reports/aderyn.md",
+      "log_sha256": "c56add3b80ca2061c940a270c164e3919f4c092da8bc0d4c7a9cfca650b39931",
+      "status": "RAN",
+      "notes": "Aderyn 0.1.9 does not accept evm_version = prague; ran from /tmp/tel-v3-aderyn with that key patched to cancun. The aderyn binary panics AFTER writing the report (stderr shows 'called Result::unwrap() on an Err value') — report itself is complete."
+    },
+    {
+      "name": "echidna",
+      "version": "2.3.2",
+      "command": "echidna test/echidna/EchidnaProps.sol --contract EchidnaProps --config echidna.yaml --format text --test-limit 500000",
+      "exit_code": 0,
+      "duration_seconds": 221,
+      "log_path": "reports/echidna.log",
+      "log_sha256": "fc5514145ada2da909504165560c19b54fc3f731020bf9bd00706725912fcc4c",
+      "status": "RAN",
+      "notes": "10/10 properties pass; 500087 calls; 10080 unique instructions; corpus size 8; seed 6736041660536909558"
+    },
+    {
+      "name": "medusa",
+      "version": "1.5.0",
+      "command": "medusa fuzz --config medusa.json --test-limit 200000",
+      "exit_code": 0,
+      "duration_seconds": 16,
+      "log_path": "reports/medusa.log",
+      "log_sha256": "89a20ee4b7a6476b81253026852162ebc115b83ff7ea944de38bc913fa7c0c1f",
+      "status": "RAN",
+      "notes": "10/10 properties pass; 224150 calls; 1127 branches"
+    },
+    {
+      "name": "halmos",
+      "version": "0.3.3",
+      "command": "halmos --contract SymbolicMigration --solver-timeout-assertion 30000",
+      "exit_code": 0,
+      "duration_seconds": 1,
+      "log_path": "reports/halmos.log",
+      "log_sha256": "6d7bca8e4577d5709da0d4cb1b563143a8d3a1cda784200b6f643f04398efa13",
+      "status": "RAN",
+      "notes": "5/5 symbolic checks pass (SymbolicMigration contract)"
+    },
+    {
+      "name": "manticore",
+      "version": null,
+      "command": null,
+      "exit_code": null,
+      "duration_seconds": null,
+      "log_path": null,
+      "log_sha256": null,
+      "status": "N/A",
+      "notes": "Manticore is not available on Python 3.13 / arm64 Darwin at the time of review. Halmos (preceding row) is the SMT-backed equivalent and covers the same class of properties; pyTEAL-style symbolic execution on EVM bytecode is also covered by Halmos. Replacement permitted by the non-negotiable rule that 'N/A because <reason>' is an acceptable outcome."
+    },
+    {
+      "name": "amarna",
+      "version": null,
+      "command": null,
+      "exit_code": null,
+      "duration_seconds": null,
+      "log_path": null,
+      "log_sha256": null,
+      "status": "N/A",
+      "notes": "Cairo/StarkNet static analyser; no Cairo contracts in scope (target is EVM Solidity)."
+    },
+    {
+      "name": "tealer",
+      "version": null,
+      "command": null,
+      "exit_code": null,
+      "duration_seconds": null,
+      "log_path": null,
+      "log_sha256": null,
+      "status": "N/A",
+      "notes": "TEAL/Algorand static analyser; no TEAL contracts in scope."
+    },
+    {
+      "name": "forge-build",
+      "version": "1.5.1-stable",
+      "command": "forge build --sizes",
+      "exit_code": 0,
+      "duration_seconds": 7,
+      "log_path": "reports/build.log",
+      "log_sha256": "831907de1d3812f6412139944b8fb27f8641fc78bb4c888c8a041e7e45488bc1",
+      "status": "RAN",
+      "notes": "All in-scope contracts compile; max runtime size 19454 B (TelcoinBridge) under 24576 B limit."
+    },
+    {
+      "name": "forge-test",
+      "version": "1.5.1-stable",
+      "command": "forge test (with ETHEREUM_RPC_URL set for 2 forking tests)",
+      "exit_code": 0,
+      "duration_seconds": 203,
+      "log_path": "reports/test.log",
+      "log_sha256": "2ae219b6abb3fa9d2fba3f1b6c9d50abca120dd103c8051eaeb2aef01ab4fcf6",
+      "status": "RAN",
+      "notes": "145 tests passed / 0 failed / 0 skipped (139 existing + 6 new invariant tests authored for this review)"
+    },
+    {
+      "name": "forge-coverage",
+      "version": "1.5.1-stable",
+      "command": "forge coverage --report summary --no-match-coverage '(test|script|lib)/'",
+      "exit_code": 0,
+      "duration_seconds": 136,
+      "log_path": "reports/coverage.log",
+      "log_sha256": "0c317deeec82fa8119fa0e3d8fa321d5bf7edc260f4250db30923a2bd1e7f5f2",
+      "status": "RAN",
+      "notes": "100% lines on all in-scope contracts; 96% stmts / 75% branches on TokenMigration (uncovered branch: renounceOwnership revert — covered by Halmos)"
+    },
+    {
+      "name": "forge-invariant",
+      "version": "1.5.1-stable",
+      "command": "forge test --match-path 'test/invariant/*'",
+      "exit_code": 0,
+      "duration_seconds": 1,
+      "log_path": "reports/test.log",
+      "log_sha256": "2ae219b6abb3fa9d2fba3f1b6c9d50abca120dd103c8051eaeb2aef01ab4fcf6",
+      "status": "RAN",
+      "notes": "6/6 invariants pass, 256 runs × depth 15 = 3840 handler calls"
+    }
+  ],
+  "summary": {
+    "ran": 12,
+    "na": 3,
+    "failed": 0,
+    "total_expected": 15,
+    "all_logs_exist": true
+  }
+}

@@ -1,0 +1,6 @@
+[PASS] testFuzz_SingleUserMigration(uint256) (runs: 100, μ: 337779, ~: 338025)
+[PASS] testFuzz_TotalSupplyConservation(uint256[]) (runs: 100, μ: 11857520, ~: 11680144)
+Suite result: ok. 8 passed; 0 failed; 0 skipped; finished in 203.02s (431.92s CPU time)
+
+Ran 11 test suites in 203.02s (205.74s CPU time): 145 tests passed, 0 failed, 0 skipped (145 total tests)
+EXIT=0

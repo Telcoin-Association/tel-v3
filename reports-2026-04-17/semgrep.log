@@ -1,0 +1,112 @@
+               
+               
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 27 files tracked by git with 50 Code rules:
+  Scanning 8 files with 50 solidity rules.
+                
+                
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 7 (7 blocking)
+ • Rules run: 50
+ • Targets scanned: 8
+ • Parsed lines: ~100.0%
+ • Scan skipped: 
+   ◦ Matching --exclude patterns: 34
+ • Scan was limited to files tracked by git
+ • For a detailed list of skipped files and lines, run semgrep with the --verbose flag
+Ran 50 rules on 8 files: 7 findings.
+
+A new version of Semgrep is available. See https://semgrep.dev/docs/upgrading
+                   
+                   
+┌─────────────────┐
+│ 7 Code Findings │
+└─────────────────┘
+                           
+    src/MintBurnWrapper.sol
+     ❱ solidity.performance.non-payable-constructor.non-payable-constructor
+          ❰❰ Blocking ❱❱
+          Consider making costructor payable to save gas.
+          Details: https://sg.run/wRBd                   
+                                                         
+           57┆ constructor(address _token, address _owner) Ownable(_owner) {
+           58┆     if (_token == address(0)) revert ZeroAddress();
+           59┆     token = IERC20Mintable(_token);
+           60┆ }
+                        
+    src/NativeBridge.sol
+     ❱ solidity.performance.non-payable-constructor.non-payable-constructor
+          ❰❰ Blocking ❱❱
+          Consider making costructor payable to save gas.
+          Details: https://sg.run/wRBd                   
+                                                         
+           48┆ constructor(
+           49┆     address _endpoint,
+           50┆     address _delegate
+           51┆ ) NativeOFTAdapter(18, _endpoint, _delegate) Ownable(_delegate) {}
+                         
+    src/TelcoinBridge.sol
+     ❱ solidity.performance.non-payable-constructor.non-payable-constructor
+          ❰❰ Blocking ❱❱
+          Consider making costructor payable to save gas.
+          Details: https://sg.run/wRBd                   
+                                                         
+           50┆ constructor(
+           51┆     address _token,
+           52┆     IMintableBurnable _minterBurner,
+           53┆     address _endpoint,
+           54┆     address _delegate
+           55┆ ) MintBurnOFTAdapter(_token, _minterBurner, _endpoint, _delegate) Ownable(_delegate) {}
+                     
+    src/TelcoinV3.sol
+     ❱ solidity.performance.non-payable-constructor.non-payable-constructor
+          ❰❰ Blocking ❱❱
+          Consider making costructor payable to save gas.
+          Details: https://sg.run/wRBd                   
+                                                         
+           35┆ constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") {
+           36┆     if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
+           37┆     _mint(admin_, initialSupply_);
+           38┆     _grantRole(DEFAULT_ADMIN_ROLE, admin_);
+           39┆ }
+   
+     ❱ solidity.performance.use-nested-if.use-nested-if
+          ❰❰ Blocking ❱❱
+          Using nested is cheaper than using && multiple check combinations.  There are more advantages, such
+          as easier to read code and better coverage reports.                                                
+          Details: https://sg.run/dXw0                                                                       
+                                                                                                             
+          110┆ if (paused() && from != address(0) && to != address(0)) {
+          111┆     revert EnforcedPause();
+          112┆ }
+                          
+    src/TokenMigration.sol
+     ❱ solidity.performance.non-payable-constructor.non-payable-constructor
+          ❰❰ Blocking ❱❱
+          Consider making costructor payable to save gas.
+          Details: https://sg.run/wRBd                   
+                                                         
+           57┆ constructor(address _oldToken, address _telcoinV3, address _initialOwner, uint256
+               _migrationDuration) Ownable(_initialOwner) {                                     
+           58┆     if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
+           59┆     if (_oldToken == _telcoinV3) revert SameAddress();
+           60┆     if (_migrationDuration == 0) revert InvalidExpiry();
+           61┆
+           62┆     oldToken = IERC20Mintable(_oldToken);
+           63┆     telcoinV3 = IERC20Mintable(_telcoinV3);
+           64┆
+           65┆     migrationExpiry = block.timestamp + _migrationDuration;
+           66┆ }
+   
+     ❱ solidity.performance.inefficient-state-variable-increment.inefficient-state-variable-increment
+          ❰❰ Blocking ❱❱
+          <x> += <y> costs more gas than <x> = <x> + <y> for state variables.
+          Details: https://sg.run/bp9v                                       
+                                                                             
+           81┆ totalMigrated += amountNewToken;
+

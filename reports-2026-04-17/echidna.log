@@ -1,0 +1,107 @@
+Warning: unused option: solcVersion
+[2026-04-17 12:48:34.27] Compiling `test/echidna/EchidnaProps.sol`... Done! (0.78151s)
+Analyzing contract: /Users/r00t/smartcontracts/tel-v3/test/echidna/EchidnaProps.sol:EchidnaProps
+[2026-04-17 12:48:35.10] Running slither on `test/echidna/EchidnaProps.sol`... Done! (0.569227s)
+Loaded 0 transaction sequences from echidna-corpus/reproducers
+Loaded 0 transaction sequences from echidna-corpus/coverage
+[2026-04-17 12:48:35.82] [Worker 2] New coverage: 9989 instr, 8 contracts, 1 seqs in corpus
+[2026-04-17 12:48:35.83]  Saved reproducer to echidna-corpus/coverage/4755789729716283703.txt
+[2026-04-17 12:48:35.83] [Worker 1] New coverage: 9989 instr, 8 contracts, 2 seqs in corpus
+[2026-04-17 12:48:35.83]  Saved reproducer to echidna-corpus/coverage/3209205352282536837.txt
+[2026-04-17 12:48:35.84] [Worker 3] New coverage: 9989 instr, 8 contracts, 3 seqs in corpus
+[2026-04-17 12:48:35.84]  Saved reproducer to echidna-corpus/coverage/1676519411061342489.txt
+[2026-04-17 12:48:35.84] [Worker 0] New coverage: 9989 instr, 8 contracts, 4 seqs in corpus
+[2026-04-17 12:48:35.84]  Saved reproducer to echidna-corpus/coverage/1701727125164945541.txt
+[2026-04-17 12:48:35.94] [Worker 1] New coverage: 10029 instr, 8 contracts, 5 seqs in corpus
+[2026-04-17 12:48:35.94]  Saved reproducer to echidna-corpus/coverage/3804184761889464840.txt
+[2026-04-17 12:48:36.17] [Worker 1] New coverage: 10032 instr, 8 contracts, 6 seqs in corpus
+[2026-04-17 12:48:36.17]  Saved reproducer to echidna-corpus/coverage/2493544043598795988.txt
+[2026-04-17 12:48:37.70] [Worker 1] New coverage: 10056 instr, 8 contracts, 7 seqs in corpus
+[2026-04-17 12:48:37.71]  Saved reproducer to echidna-corpus/coverage/2782493851673855794.txt
+[2026-04-17 12:48:38.70] [status] tests: 0/10, fuzzing: 9105/500000, values: [], cov: 10056, corpus: 7, gas/s: 200754595
+[2026-04-17 12:48:41.70] [status] tests: 0/10, fuzzing: 17840/500000, values: [], cov: 10056, corpus: 7, gas/s: 192138749
+[2026-04-17 12:48:44.70] [status] tests: 0/10, fuzzing: 26508/500000, values: [], cov: 10056, corpus: 7, gas/s: 191105002
+[2026-04-17 12:48:47.51] [Worker 2] New coverage: 10080 instr, 8 contracts, 8 seqs in corpus
+[2026-04-17 12:48:47.51]  Saved reproducer to echidna-corpus/coverage/5203952662820121663.txt
+[2026-04-17 12:48:47.70] [status] tests: 0/10, fuzzing: 35104/500000, values: [], cov: 10080, corpus: 8, gas/s: 189869295
+[2026-04-17 12:48:50.70] [status] tests: 0/10, fuzzing: 43635/500000, values: [], cov: 10080, corpus: 8, gas/s: 185021687
+[2026-04-17 12:48:53.71] [status] tests: 0/10, fuzzing: 52290/500000, values: [], cov: 10080, corpus: 8, gas/s: 187054241
+[2026-04-17 12:48:56.71] [status] tests: 0/10, fuzzing: 60710/500000, values: [], cov: 10080, corpus: 8, gas/s: 183045348
+[2026-04-17 12:48:59.71] [status] tests: 0/10, fuzzing: 69139/500000, values: [], cov: 10080, corpus: 8, gas/s: 181466536
+[2026-04-17 12:49:02.71] [status] tests: 0/10, fuzzing: 77788/500000, values: [], cov: 10080, corpus: 8, gas/s: 185440571
+[2026-04-17 12:49:05.71] [status] tests: 0/10, fuzzing: 86290/500000, values: [], cov: 10080, corpus: 8, gas/s: 185880249
+[2026-04-17 12:49:08.71] [status] tests: 0/10, fuzzing: 94878/500000, values: [], cov: 10080, corpus: 8, gas/s: 184937844
+[2026-04-17 12:49:11.71] [status] tests: 0/10, fuzzing: 103327/500000, values: [], cov: 10080, corpus: 8, gas/s: 182890403
+[2026-04-17 12:49:14.71] [status] tests: 0/10, fuzzing: 112068/500000, values: [], cov: 10080, corpus: 8, gas/s: 188211724
+[2026-04-17 12:49:17.71] [status] tests: 0/10, fuzzing: 120538/500000, values: [], cov: 10080, corpus: 8, gas/s: 183213108
+[2026-04-17 12:49:20.72] [status] tests: 0/10, fuzzing: 129041/500000, values: [], cov: 10080, corpus: 8, gas/s: 184260850
+[2026-04-17 12:49:23.72] [status] tests: 0/10, fuzzing: 137582/500000, values: [], cov: 10080, corpus: 8, gas/s: 184026783
+[2026-04-17 12:49:26.72] [status] tests: 0/10, fuzzing: 146192/500000, values: [], cov: 10080, corpus: 8, gas/s: 185669986
+[2026-04-17 12:49:29.72] [status] tests: 0/10, fuzzing: 154578/500000, values: [], cov: 10080, corpus: 8, gas/s: 182420767
+[2026-04-17 12:49:32.72] [status] tests: 0/10, fuzzing: 163276/500000, values: [], cov: 10080, corpus: 8, gas/s: 189816318
+[2026-04-17 12:49:35.72] [status] tests: 0/10, fuzzing: 171872/500000, values: [], cov: 10080, corpus: 8, gas/s: 186628827
+[2026-04-17 12:49:38.72] [status] tests: 0/10, fuzzing: 180386/500000, values: [], cov: 10080, corpus: 8, gas/s: 184922443
+[2026-04-17 12:49:41.72] [status] tests: 0/10, fuzzing: 188828/500000, values: [], cov: 10080, corpus: 8, gas/s: 183559450
+[2026-04-17 12:49:44.72] [status] tests: 0/10, fuzzing: 197356/500000, values: [], cov: 10080, corpus: 8, gas/s: 185195835
+[2026-04-17 12:49:47.73] [status] tests: 0/10, fuzzing: 205939/500000, values: [], cov: 10080, corpus: 8, gas/s: 186547386
+[2026-04-17 12:49:50.73] [status] tests: 0/10, fuzzing: 214563/500000, values: [], cov: 10080, corpus: 8, gas/s: 186808185
+[2026-04-17 12:49:53.73] [status] tests: 0/10, fuzzing: 222852/500000, values: [], cov: 10080, corpus: 8, gas/s: 180021979
+[2026-04-17 12:49:56.73] [status] tests: 0/10, fuzzing: 231400/500000, values: [], cov: 10080, corpus: 8, gas/s: 186431167
+[2026-04-17 12:49:59.73] [status] tests: 0/10, fuzzing: 239951/500000, values: [], cov: 10080, corpus: 8, gas/s: 186056238
+[2026-04-17 12:50:02.73] [status] tests: 0/10, fuzzing: 248562/500000, values: [], cov: 10080, corpus: 8, gas/s: 183765818
+[2026-04-17 12:50:05.73] [status] tests: 0/10, fuzzing: 257057/500000, values: [], cov: 10080, corpus: 8, gas/s: 184233116
+[2026-04-17 12:50:08.73] [status] tests: 0/10, fuzzing: 265495/500000, values: [], cov: 10080, corpus: 8, gas/s: 182430129
+[2026-04-17 12:50:11.73] [status] tests: 0/10, fuzzing: 274118/500000, values: [], cov: 10080, corpus: 8, gas/s: 185153698
+[2026-04-17 12:50:14.74] [status] tests: 0/10, fuzzing: 282628/500000, values: [], cov: 10080, corpus: 8, gas/s: 183923709
+[2026-04-17 12:50:17.74] [status] tests: 0/10, fuzzing: 291277/500000, values: [], cov: 10080, corpus: 8, gas/s: 186463480
+[2026-04-17 12:50:20.74] [status] tests: 0/10, fuzzing: 299656/500000, values: [], cov: 10080, corpus: 8, gas/s: 182042939
+[2026-04-17 12:50:23.74] [status] tests: 0/10, fuzzing: 308250/500000, values: [], cov: 10080, corpus: 8, gas/s: 187345407
+[2026-04-17 12:50:26.74] [status] tests: 0/10, fuzzing: 316774/500000, values: [], cov: 10080, corpus: 8, gas/s: 184405179
+[2026-04-17 12:50:29.74] [status] tests: 0/10, fuzzing: 325412/500000, values: [], cov: 10080, corpus: 8, gas/s: 185847635
+[2026-04-17 12:50:32.74] [status] tests: 0/10, fuzzing: 333969/500000, values: [], cov: 10080, corpus: 8, gas/s: 185932391
+[2026-04-17 12:50:35.74] [status] tests: 0/10, fuzzing: 342718/500000, values: [], cov: 10080, corpus: 8, gas/s: 188777959
+[2026-04-17 12:50:38.74] [status] tests: 0/10, fuzzing: 351231/500000, values: [], cov: 10080, corpus: 8, gas/s: 183779747
+[2026-04-17 12:50:41.75] [status] tests: 0/10, fuzzing: 359679/500000, values: [], cov: 10080, corpus: 8, gas/s: 182145937
+[2026-04-17 12:50:44.75] [status] tests: 0/10, fuzzing: 368397/500000, values: [], cov: 10080, corpus: 8, gas/s: 189441709
+[2026-04-17 12:50:47.75] [status] tests: 0/10, fuzzing: 376785/500000, values: [], cov: 10080, corpus: 8, gas/s: 182252573
+[2026-04-17 12:50:50.75] [status] tests: 0/10, fuzzing: 385306/500000, values: [], cov: 10080, corpus: 8, gas/s: 185006121
+[2026-04-17 12:50:53.75] [status] tests: 0/10, fuzzing: 394065/500000, values: [], cov: 10080, corpus: 8, gas/s: 189214793
+[2026-04-17 12:50:56.75] [status] tests: 0/10, fuzzing: 402524/500000, values: [], cov: 10080, corpus: 8, gas/s: 183456295
+[2026-04-17 12:50:59.75] [status] tests: 0/10, fuzzing: 411131/500000, values: [], cov: 10080, corpus: 8, gas/s: 186655497
+[2026-04-17 12:51:02.75] [status] tests: 0/10, fuzzing: 420023/500000, values: [], cov: 10080, corpus: 8, gas/s: 191889896
+[2026-04-17 12:51:05.76] [status] tests: 0/10, fuzzing: 428504/500000, values: [], cov: 10080, corpus: 8, gas/s: 182380924
+[2026-04-17 12:51:08.76] [status] tests: 0/10, fuzzing: 437152/500000, values: [], cov: 10080, corpus: 8, gas/s: 188091406
+[2026-04-17 12:51:11.76] [status] tests: 0/10, fuzzing: 445790/500000, values: [], cov: 10080, corpus: 8, gas/s: 189495009
+[2026-04-17 12:51:14.76] [status] tests: 0/10, fuzzing: 454381/500000, values: [], cov: 10080, corpus: 8, gas/s: 187242585
+[2026-04-17 12:51:17.76] [status] tests: 0/10, fuzzing: 463045/500000, values: [], cov: 10080, corpus: 8, gas/s: 188767863
+[2026-04-17 12:51:20.76] [status] tests: 0/10, fuzzing: 471651/500000, values: [], cov: 10080, corpus: 8, gas/s: 187711438
+[2026-04-17 12:51:23.76] [status] tests: 0/10, fuzzing: 480315/500000, values: [], cov: 10080, corpus: 8, gas/s: 186843515
+[2026-04-17 12:51:26.76] [status] tests: 0/10, fuzzing: 488886/500000, values: [], cov: 10080, corpus: 8, gas/s: 186053564
+[2026-04-17 12:51:29.77] [status] tests: 0/10, fuzzing: 497575/500000, values: [], cov: 10080, corpus: 8, gas/s: 188917710
+[2026-04-17 12:51:30.18] [Worker 0] Test limit reached. Stopping.
+[2026-04-17 12:51:30.40] [Worker 2] Test limit reached. Stopping.
+[2026-04-17 12:51:30.47] [Worker 1] Test limit reached. Stopping.
+[2026-04-17 12:51:31.12] [Worker 3] Test limit reached. Stopping.
+[2026-04-17 12:51:31.12] [status] tests: 0/10, fuzzing: 500087/500000, values: [], cov: 10080, corpus: 8, gas/s: 162059643
+echidna_rescueBurnReducesSupply: passing
+echidna_supplyCap: passing
+echidna_F2_totalMigratedMonotone: passing
+echidna_S2_pausedBlocksTransfer: passing
+echidna_ST1_totalOldTokenBurnedEqualsBurnAddrBal: passing
+echidna_I2_decimalMultiplier: passing
+echidna_F2_burnAddrMonotone: passing
+echidna_S1b_burnWithoutApprovalReverts: passing
+echidna_IM2_IM3_constants: passing
+echidna_W1_bridgeAuthorised: passing
+
+Unique instructions: 10080
+Unique codehashes: 8
+Corpus size: 8
+Seed: 6736041660536909558
+Total calls: 500087
+
+[2026-04-17 12:51:31.12] Saving test reproducers... Done! (0.000001s)
+[2026-04-17 12:51:31.12] Saving corpus... Done! (0.000241s)
+[2026-04-17 12:51:31.12] Saving foundry reproducers... Done! (0.000077s)
+[2026-04-17 12:51:31.12] Saving coverage... Done! (0.121338s)
+---EXIT:0---

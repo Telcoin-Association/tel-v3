@@ -1,0 +1,9 @@
+No files changed, compilation skipped
+
+Running 5 tests for test/symbolic/SymbolicMigration.t.sol:SymbolicMigration
+[32m[PASS][0m check_constants() (paths: 1, time: 0.00s, bounds: [])
+[32m[PASS][0m check_expiryFuture() (paths: 1, time: 0.00s, bounds: [])
+[32m[PASS][0m check_getAmountOut_pure(uint128) (paths: 3, time: 0.02s, bounds: [])
+[32m[PASS][0m check_supplyCapAtConstruction(uint256) (paths: 2, time: 0.01s, bounds: [])
+[32m[PASS][0m check_totalOldTokenBurned_view() (paths: 1, time: 0.00s, bounds: [])
+Symbolic test result: 5 passed; 0 failed; time: 0.06s

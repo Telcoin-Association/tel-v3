@@ -1,0 +1,45 @@
+[1m[32m⇾[0m[0m [1mReading the configuration file at: [1mmedusa.json[0m[0m
+[1m[32m⇾[0m[0m [1mCompiling targets with [1mcrytic-compile[0m[0m
+[1m[32m⇾[0m[0m [1mRunning command:
+/opt/homebrew/bin/crytic-compile test/echidna/EchidnaProps.sol --export-format solc --foundry-compile-all --solc-remaps @layerzerolabs/oapp-evm/=lib/LayerZero-v2/packages/layerzero-v2/evm/oapp/ --solc-remaps @layerzerolabs/lz-evm-protocol-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/protocol/ --solc-remaps @layerzerolabs/lz-evm-messagelib-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/messagelib/ --solc-remaps @layerzerolabs/oft-evm/=lib/layerzero-devtools/packages/oft-evm/ --solc-remaps @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/[0m
+[1m[32m⇾[0m[0m [1mFinished compiling targets in 1s[0m
+[1m[32m⇾[0m[0m [1m[1martifacts: [0mMedusa is running against a [1m[32mnew[0m[0m set of build artifacts[0m
+[1m[32m⇾[0m[0m [1mNo Slither cached results found at slither_results.json[0m
+[1m[32m⇾[0m[0m [1mRunning Slither:
+/opt/homebrew/bin/slither test/echidna/EchidnaProps.sol --ignore-compile --print echidna --json -[0m
+[1m[32m⇾[0m[0m [1mFinished running Slither in 1s[0m
+[1m[32m⇾[0m[0m [1mSetting up test chain[0m
+[1m[32m⇾[0m[0m [1mFinished setting up test chain[0m
+[1m[32m⇾[0m[0m [1mCreating corpus...[0m
+[1m[32m⇾[0m[0m [1mFuzzing with [1m8[0m workers[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_rescueBurnReducesSupply()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_IM2_IM3_constants()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_supplyCap()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_F2_burnAddrMonotone()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_S2_pausedBlocksTransfer()[0m[0m
+[1m[32m⇾[0m[0m [1m[1mfuzz: [0melapsed: [1m      0s[0m, calls: [1m         0 (     0/sec)[0m, seq/s: [1m     0[0m, branches: [1m   445[0m, corpus: [1m    0[0m, failures: [1m0/0[0m, gas/s: [1m           0[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_F2_totalMigratedMonotone()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_I2_decimalMultiplier()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_S1b_burnWithoutApprovalReverts()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_W1_bridgeAuthorised()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[NOT STARTED] [0m[0m[1mProperty Test: EchidnaProps.echidna_ST1_totalOldTokenBurnedEqualsBurnAddrBal()[0m[0m
+[1m[32m⇾[0m[0m [1m[1mfuzz: [0melapsed: [1m      3s[0m, calls: [1m     44367 ( 14784/sec)[0m, seq/s: [1m   146[0m, branches: [1m  1127[0m, corpus: [1m   24[0m, failures: [1m0/439[0m, gas/s: [1m   683052551[0m[0m
+[1m[32m⇾[0m[0m [1m[1mfuzz: [0melapsed: [1m      6s[0m, calls: [1m     89226 ( 14951/sec)[0m, seq/s: [1m   149[0m, branches: [1m  1127[0m, corpus: [1m   24[0m, failures: [1m0/888[0m, gas/s: [1m   689058638[0m[0m
+[1m[32m⇾[0m[0m [1m[1mfuzz: [0melapsed: [1m      9s[0m, calls: [1m    134159 ( 14976/sec)[0m, seq/s: [1m   149[0m, branches: [1m  1127[0m, corpus: [1m   24[0m, failures: [1m0/1336[0m, gas/s: [1m   690605877[0m[0m
+[1m[32m⇾[0m[0m [1m[1mfuzz: [0melapsed: [1m     12s[0m, calls: [1m    179226 ( 15021/sec)[0m, seq/s: [1m   150[0m, branches: [1m  1127[0m, corpus: [1m   24[0m, failures: [1m0/1788[0m, gas/s: [1m   690603791[0m[0m
+[1m[32m⇾[0m[0m [1m[1mfuzz: [0melapsed: [1m     15s[0m, calls: [1m    224149 ( 14972/sec)[0m, seq/s: [1m   149[0m, branches: [1m  1127[0m, corpus: [1m   24[0m, failures: [1m0/2236[0m, gas/s: [1m   688418520[0m[0m
+[1m[32m⇾[0m[0m [1mTransaction test limit reached, halting now...[0m
+[1m[32m⇾[0m[0m [1mFuzzer stopped, test results follow below ...[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_F2_burnAddrMonotone()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_F2_totalMigratedMonotone()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_I2_decimalMultiplier()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_IM2_IM3_constants()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_S1b_burnWithoutApprovalReverts()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_S2_pausedBlocksTransfer()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_ST1_totalOldTokenBurnedEqualsBurnAddrBal()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_W1_bridgeAuthorised()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_rescueBurnReducesSupply()[0m[0m
+[1m[32m⇾[0m[0m [1m[1m[32m[PASSED] [0m[0m[1mProperty Test: EchidnaProps.echidna_supplyCap()[0m[0m
+[1m[32m⇾[0m[0m [1mTest summary: [1m[32m10[0m[0m test(s) passed, [1m[31m0[0m[0m test(s) failed[0m
+[1m[32m⇾[0m[0m [1mhtml report(s) saved to: medusa-corpus/coverage/coverage_report.html[0m
+[1m[32m⇾[0m[0m [1mlcov report(s) saved to: medusa-corpus/coverage/lcov.info[0m
