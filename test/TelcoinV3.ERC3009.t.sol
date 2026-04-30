@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {TelcoinV3} from "../src/TelcoinV3.sol";
 import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
+import {MockERC1271Wallet} from "./mocks/MockERC1271Wallet.sol";
 
 /**
  * @title TelcoinV3ERC3009Test
@@ -366,9 +367,9 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         token.receiveWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
-    // --------------------------------
+    // ------------------------------
     // EIP-1271 Smart Contract Wallet
-    // --------------------------------
+    // ------------------------------
 
     /// @notice transferWithAuthorization works with an EIP-1271 contract wallet.
     function test_TransferAuth_EIP1271Wallet() public {
@@ -433,55 +434,5 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         assertEq(token.balanceOf(user), preBal + amount);
         assertEq(token.balanceOf(signer), preBalSigner - amount);
         assertTrue(token.authorizationState(signer, nonce));
-    }
-
-    // -------
-    // Helpers
-    // -------
-
-    /// @dev Cancels a nonce for the signer.
-    function _cancelNonce(address authorizer, bytes32 nonce) internal {
-        bytes32 structHash = keccak256(abi.encode(token.CANCEL_AUTHORIZATION_TYPEHASH(), authorizer, nonce));
-        bytes32 digest = _buildDigest(structHash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
-        token.cancelAuthorization(authorizer, nonce, v, r, s);
-    }
-
-    /// @dev Signs and attempts a receiveWithAuthorization, expecting a revert.
-    function _expectRevertReceiveAuth(
-        address from,
-        address to,
-        uint256 amount,
-        bytes32 nonce,
-        bytes4 expectedError
-    ) internal {
-        uint256 validAfter = block.timestamp - 1;
-        uint256 validBefore = block.timestamp + 1 hours;
-
-        bytes32 structHash = keccak256(
-            abi.encode(token.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), from, to, amount, validAfter, validBefore, nonce)
-        );
-        bytes32 digest = _buildDigest(structHash);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
-
-        vm.prank(to);
-        vm.expectRevert(expectedError);
-        token.receiveWithAuthorization(from, to, amount, validAfter, validBefore, nonce, v, r, s);
-    }
-}
-
-/// @dev Mock EIP-1271 wallet that validates a pre-set hash
-contract MockERC1271Wallet {
-    bytes32 private _validHash;
-
-    function setValidHash(bytes32 hash) external {
-        _validHash = hash;
-    }
-
-    function isValidSignature(bytes32 hash, bytes calldata) external view returns (bytes4) {
-        if (hash == _validHash) {
-            return 0x1626ba7e; // EIP-1271 magic value
-        }
-        return 0xffffffff;
     }
 }

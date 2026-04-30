@@ -96,4 +96,34 @@ abstract contract TelcoinV3BaseSetup is Test, Roles {
         vm.expectRevert(expectedError);
         token.transferWithAuthorization(from, to, amount, validAfter, validBefore, nonce, v, r, s);
     }
+
+    /// @dev Cancels a nonce for the signer.
+    function _cancelNonce(address authorizer, bytes32 nonce) internal {
+        bytes32 structHash = keccak256(abi.encode(token.CANCEL_AUTHORIZATION_TYPEHASH(), authorizer, nonce));
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+        token.cancelAuthorization(authorizer, nonce, v, r, s);
+    }
+
+    /// @dev Signs and attempts a receiveWithAuthorization, expecting a revert.
+    function _expectRevertReceiveAuth(
+        address from,
+        address to,
+        uint256 amount,
+        bytes32 nonce,
+        bytes4 expectedError
+    ) internal {
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), from, to, amount, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        vm.prank(to);
+        vm.expectRevert(expectedError);
+        token.receiveWithAuthorization(from, to, amount, validAfter, validBefore, nonce, v, r, s);
+    }
 }

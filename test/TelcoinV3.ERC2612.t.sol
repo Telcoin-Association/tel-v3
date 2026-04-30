@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {TelcoinV3} from "../src/TelcoinV3.sol";
 import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
+import {MockERC1271Wallet} from "./mocks/MockERC1271Wallet.sol";
 
 /**
  * @title TelcoinV3ERC2612Test
@@ -83,7 +84,7 @@ contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
 
     /// @notice permit() works with an EIP-1271 contract wallet.
     function test_Permit_EIP1271Wallet() public {
-        MockPermitWallet wallet = new MockPermitWallet();
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
 
         // Fund the wallet (it needs tokens for the approval to be meaningful)
         vm.prank(bridge);
@@ -109,7 +110,7 @@ contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
 
     /// @notice permit() reverts when EIP-1271 wallet rejects the signature.
     function test_RevertIf_Permit_EIP1271WalletRejects() public {
-        MockPermitWallet wallet = new MockPermitWallet();
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
 
         vm.prank(bridge);
         token.mint(address(wallet), 1000 ether);
@@ -119,21 +120,5 @@ contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
         // Don't set valid hash — wallet will reject
         vm.expectRevert(TelcoinV3.InvalidSignature.selector);
         token.permit(address(wallet), user, 500 ether, deadline, 27, bytes32(uint256(1)), bytes32(uint256(2)));
-    }
-}
-
-/// @dev Mock EIP-1271 wallet for permit tests
-contract MockPermitWallet {
-    bytes32 private _validHash;
-
-    function setValidHash(bytes32 hash) external {
-        _validHash = hash;
-    }
-
-    function isValidSignature(bytes32 hash, bytes calldata) external view returns (bytes4) {
-        if (hash == _validHash) {
-            return 0x1626ba7e; // EIP-1271 magic value
-        }
-        return 0xffffffff;
     }
 }
