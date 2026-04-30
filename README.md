@@ -38,6 +38,10 @@ graph LR
 - **`burn()` requires prior approval**: the token holder must `approve` the caller (e.g. `MintBurnWrapper`) before their tokens can be burned — protects against a compromised BURNER_ROLE draining arbitrary wallets
 - **`rescueBurn(from, amount)`**: gated by `DEFAULT_ADMIN_ROLE`; burns from any wallet without approval — reserved for governance emergency response (e.g. burning hacker balances)
 - **`renounceRole()` disabled**: no role holder, including `DEFAULT_ADMIN_ROLE`, can voluntarily renounce their role — roles may only be revoked by an admin
+- **EIP-2612 (permit)**: gasless approvals via signed EIP-712 messages — users can authorize a spender without an on-chain `approve()` transaction
+- **EIP-3009 (transferWithAuthorization)**: gasless transfers via signed EIP-712 messages — `transferWithAuthorization` (anyone can submit), `receiveWithAuthorization` (only payee can submit, prevents front-running), and `cancelAuthorization` (revoke unused nonces)
+- **EIP-1271 smart contract wallet support**: both `permit()` and EIP-3009 functions use OpenZeppelin's `SignatureChecker` instead of raw `ECDSA.recover`, enabling Gnosis Safe, ERC-4337 accounts, and other smart contract wallets to sign authorizations
+- **Independent nonce systems**: EIP-2612 uses sequential `uint256` nonces (via OZ `Nonces`); EIP-3009 uses random `bytes32` nonces tracked in a separate mapping — no interference between the two
 
 ### Migration Contract
 
@@ -213,6 +217,9 @@ migration.recoverERC20(destination, tokenAddress, amount)
 10. **Bridge Role Decoupling**: `TelcoinBridge` holds no direct roles on `TelcoinV3`. Mint/burn capability is managed through `MintBurnWrapper`, so bridges can be upgraded or revoked without modifying TelcoinV3's access control
 11. **Single Active Bridge**: `MintBurnWrapper` tracks one bridge address at a time. Replacing a bridge requires `revokeBridge` + `authorizeBridge` on the wrapper and `setPeer` updates — no token governance action required
 12. **Single NativeBridge Constraint**: Only one `NativeBridge` should exist across the OFT mesh; deploying multiple would break lock/credit accounting
+13. **EIP-712 Domain Separation**: EIP-2612 and EIP-3009 share a single EIP-712 domain separator (via `ERC20Permit` / `EIP712`), but use distinct type hashes — a permit signature cannot be replayed as a `transferWithAuthorization` or vice versa. Cross-chain replay is prevented by `chainId` in the domain separator
+14. **EIP-3009 Replay Protection**: Each authorization nonce is a random `bytes32` that transitions `false → true` (one-shot latch) and can never revert to `false`. `cancelAuthorization` marks a nonce as used without executing a transfer
+15. **EIP-1271 Signature Verification**: `SignatureChecker.isValidSignatureNow()` issues a `staticcall` to the signer contract for EIP-1271 validation — no state modification is possible during the callback
 
 ## Gas Estimates
 
