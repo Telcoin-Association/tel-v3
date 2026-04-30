@@ -2,14 +2,14 @@
 pragma solidity ^0.8.26;
 
 import {TelcoinV3} from "../src/TelcoinV3.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
 
 /**
  * @title TelcoinV3ERC3009Test
  * @notice Tests for EIP-3009 (transferWithAuthorization) functionality on TelcoinV3, covering
  *         authorized transfers, receive authorization, cancellation, replay protection,
- *         time-window validation, signature verification, and pausability interactions.
+ *         time-window validation, signature verification, pausability interactions, edge cases,
+ *         and EIP-1271 smart contract wallet signatures.
  */
 contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
     // -------------------------
@@ -118,7 +118,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         bytes32 digest = _buildDigest(structHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongPk, digest);
 
-        vm.expectRevert(ECDSA.ECDSAInvalidSignature.selector);
+        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
         token.transferWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -192,6 +192,29 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         token.receiveWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
+    /// @notice receiveWithAuthorization reverts when paused.
+    function test_RevertIf_ReceiveAuth_WhilePaused() public {
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+        bytes32 nonce = bytes32(uint256(12));
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                token.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(),
+                signer, user, 100 ether, validAfter, validBefore, nonce
+            )
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        vm.prank(owner);
+        token.pause();
+
+        vm.prank(user);
+        vm.expectRevert();
+        token.receiveWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
+    }
+
     // -------------------
     // cancelAuthorization
     // -------------------
@@ -230,5 +253,235 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
 
         vm.expectRevert(TelcoinV3.AuthorizationAlreadyUsed.selector);
         token.cancelAuthorization(signer, nonce, v, r, s);
+    }
+
+    /// @notice cancelAuthorization reverts with a wrong signer.
+    function test_RevertIf_CancelAuth_WrongSigner() public {
+        (, uint256 wrongPk) = makeAddrAndKey("wrongCancel");
+        bytes32 nonce = bytes32(uint256(22));
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.CANCEL_AUTHORIZATION_TYPEHASH(), signer, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongPk, digest);
+
+        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        token.cancelAuthorization(signer, nonce, v, r, s);
+    }
+
+    /// @notice cancelAuthorization blocks receiveWithAuthorization (not just transferWithAuthorization).
+    function test_CancelAuth_BlocksReceiveAuth() public {
+        bytes32 nonce = bytes32(uint256(23));
+
+        // Cancel the nonce
+        _cancelNonce(signer, nonce);
+
+        // Now try receiveWithAuthorization with the canceled nonce — should revert
+        _expectRevertReceiveAuth(signer, user, 100 ether, nonce, TelcoinV3.AuthorizationAlreadyUsed.selector);
+    }
+
+    // ----------
+    // Edge Cases
+    // ----------
+
+    /// @notice Zero-value transferWithAuthorization succeeds and consumes nonce.
+    function test_TransferAuth_ZeroValue() public {
+        bytes32 nonce = bytes32(uint256(30));
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), signer, user, uint256(0), validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        token.transferWithAuthorization(signer, user, 0, validAfter, validBefore, nonce, v, r, s);
+
+        assertTrue(token.authorizationState(signer, nonce));
+    }
+
+    /// @notice Self-transfer (from == to) succeeds as a no-op on balances.
+    function test_TransferAuth_SelfTransfer() public {
+        bytes32 nonce = bytes32(uint256(31));
+        uint256 preBal = token.balanceOf(signer);
+
+        _executeTransferAuth(signer, signer, 100 ether, nonce);
+
+        assertEq(token.balanceOf(signer), preBal);
+        assertTrue(token.authorizationState(signer, nonce));
+    }
+
+    /// @notice validAfter == validBefore creates an unusable authorization (no valid timestamp).
+    function test_RevertIf_TransferAuth_EqualTimeBounds() public {
+        uint256 t = block.timestamp;
+        bytes32 nonce = bytes32(uint256(32));
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), signer, user, 100 ether, t, t, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        // block.timestamp == validAfter means <= check fails with AuthorizationNotYetValid
+        vm.expectRevert(TelcoinV3.AuthorizationNotYetValid.selector);
+        token.transferWithAuthorization(signer, user, 100 ether, t, t, nonce, v, r, s);
+    }
+
+    /// @notice validAfter=0, validBefore=type(uint256).max is the "no time restriction" case.
+    function test_TransferAuth_NoTimeRestriction() public {
+        bytes32 nonce = bytes32(uint256(33));
+        uint256 validAfter = 0;
+        uint256 validBefore = type(uint256).max;
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), signer, user, 50 ether, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        uint256 preBal = token.balanceOf(user);
+        token.transferWithAuthorization(signer, user, 50 ether, validAfter, validBefore, nonce, v, r, s);
+
+        assertEq(token.balanceOf(user), preBal + 50 ether);
+    }
+
+    /// @notice A transferWithAuthorization signature cannot be used for receiveWithAuthorization (different type hash).
+    function test_RevertIf_CrossFunctionReplay_TransferAsReceive() public {
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+        bytes32 nonce = bytes32(uint256(34));
+
+        // Sign a transferWithAuthorization
+        bytes32 transferHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), signer, user, 100 ether, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(transferHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        // Try to use it as a receiveWithAuthorization — different type hash means different digest
+        vm.prank(user);
+        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        token.receiveWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
+    }
+
+    // --------------------------------
+    // EIP-1271 Smart Contract Wallet
+    // --------------------------------
+
+    /// @notice transferWithAuthorization works with an EIP-1271 contract wallet.
+    function test_TransferAuth_EIP1271Wallet() public {
+        // Deploy a mock EIP-1271 wallet that approves everything
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
+
+        // Fund the wallet
+        vm.prank(bridge);
+        token.mint(address(wallet), 1000 ether);
+
+        bytes32 nonce = bytes32(uint256(40));
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+        uint256 amount = 100 ether;
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), address(wallet), user, amount, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+
+        // Set the expected hash on the mock wallet
+        wallet.setValidHash(digest);
+
+        uint256 preBal = token.balanceOf(user);
+
+        // v, r, s don't matter for the mock — it checks the hash directly
+        token.transferWithAuthorization(address(wallet), user, amount, validAfter, validBefore, nonce, 27, bytes32(uint256(1)), bytes32(uint256(2)));
+
+        assertEq(token.balanceOf(user), preBal + amount);
+    }
+
+    /// @notice transferWithAuthorization reverts when EIP-1271 wallet rejects the signature.
+    function test_RevertIf_TransferAuth_EIP1271WalletRejects() public {
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
+
+        vm.prank(bridge);
+        token.mint(address(wallet), 1000 ether);
+
+        bytes32 nonce = bytes32(uint256(41));
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+
+        // Don't set a valid hash — wallet will reject
+
+        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        token.transferWithAuthorization(address(wallet), user, 100 ether, validAfter, validBefore, nonce, 27, bytes32(uint256(1)), bytes32(uint256(2)));
+    }
+
+    // ---------
+    // Fuzz Test
+    // ---------
+
+    /// @notice Fuzz test for transferWithAuthorization with random amounts and nonces.
+    function testFuzz_TransferWithAuthorization(uint256 amount, bytes32 nonce) public {
+        amount = bound(amount, 0, token.balanceOf(signer));
+
+        uint256 preBal = token.balanceOf(user);
+        uint256 preBalSigner = token.balanceOf(signer);
+
+        _executeTransferAuth(signer, user, amount, nonce);
+
+        assertEq(token.balanceOf(user), preBal + amount);
+        assertEq(token.balanceOf(signer), preBalSigner - amount);
+        assertTrue(token.authorizationState(signer, nonce));
+    }
+
+    // -------
+    // Helpers
+    // -------
+
+    /// @dev Cancels a nonce for the signer.
+    function _cancelNonce(address authorizer, bytes32 nonce) internal {
+        bytes32 structHash = keccak256(abi.encode(token.CANCEL_AUTHORIZATION_TYPEHASH(), authorizer, nonce));
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+        token.cancelAuthorization(authorizer, nonce, v, r, s);
+    }
+
+    /// @dev Signs and attempts a receiveWithAuthorization, expecting a revert.
+    function _expectRevertReceiveAuth(
+        address from,
+        address to,
+        uint256 amount,
+        bytes32 nonce,
+        bytes4 expectedError
+    ) internal {
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), from, to, amount, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        vm.prank(to);
+        vm.expectRevert(expectedError);
+        token.receiveWithAuthorization(from, to, amount, validAfter, validBefore, nonce, v, r, s);
+    }
+}
+
+/// @dev Mock EIP-1271 wallet that validates a pre-set hash
+contract MockERC1271Wallet {
+    bytes32 private _validHash;
+
+    function setValidHash(bytes32 hash) external {
+        _validHash = hash;
+    }
+
+    function isValidSignature(bytes32 hash, bytes calldata) external view returns (bytes4) {
+        if (hash == _validHash) {
+            return 0x1626ba7e; // EIP-1271 magic value
+        }
+        return 0xffffffff;
     }
 }

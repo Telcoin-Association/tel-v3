@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
+import {TelcoinV3} from "../src/TelcoinV3.sol";
 import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
 
 /**
  * @title TelcoinV3ERC2612Test
  * @notice Tests for EIP-2612 (permit) functionality on TelcoinV3, verifying gasless approvals
- *         via EIP-712 signed messages including valid permits, expired deadlines, and invalid signers.
+ *         via EIP-712 signed messages including valid permits, expired deadlines, invalid signers,
+ *         pausability interactions, and EIP-1271 smart contract wallet support.
  */
 contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
     bytes32 internal constant PERMIT_TYPEHASH =
@@ -57,5 +59,81 @@ contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
 
         vm.expectRevert();
         token.permit(signer, user, 1000 ether, deadline, v, r, s);
+    }
+
+    /// @notice permit() succeeds while paused (approvals are not transfers).
+    function test_Permit_WhilePaused() public {
+        vm.prank(owner);
+        token.pause();
+
+        uint256 amount = 500 ether;
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = token.nonces(signer);
+
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, signer, user, amount, nonce, deadline)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        token.permit(signer, user, amount, deadline, v, r, s);
+
+        assertEq(token.allowance(signer, user), amount);
+    }
+
+    /// @notice permit() works with an EIP-1271 contract wallet.
+    function test_Permit_EIP1271Wallet() public {
+        MockPermitWallet wallet = new MockPermitWallet();
+
+        // Fund the wallet (it needs tokens for the approval to be meaningful)
+        vm.prank(bridge);
+        token.mint(address(wallet), 1000 ether);
+
+        uint256 amount = 500 ether;
+        uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = token.nonces(address(wallet));
+
+        bytes32 structHash = keccak256(
+            abi.encode(PERMIT_TYPEHASH, address(wallet), user, amount, nonce, deadline)
+        );
+        bytes32 digest = _buildDigest(structHash);
+
+        wallet.setValidHash(digest);
+
+        // v, r, s values don't matter — the mock wallet checks the digest directly
+        token.permit(address(wallet), user, amount, deadline, 27, bytes32(uint256(1)), bytes32(uint256(2)));
+
+        assertEq(token.allowance(address(wallet), user), amount);
+        assertEq(token.nonces(address(wallet)), nonce + 1);
+    }
+
+    /// @notice permit() reverts when EIP-1271 wallet rejects the signature.
+    function test_RevertIf_Permit_EIP1271WalletRejects() public {
+        MockPermitWallet wallet = new MockPermitWallet();
+
+        vm.prank(bridge);
+        token.mint(address(wallet), 1000 ether);
+
+        uint256 deadline = block.timestamp + 1 hours;
+
+        // Don't set valid hash — wallet will reject
+        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        token.permit(address(wallet), user, 500 ether, deadline, 27, bytes32(uint256(1)), bytes32(uint256(2)));
+    }
+}
+
+/// @dev Mock EIP-1271 wallet for permit tests
+contract MockPermitWallet {
+    bytes32 private _validHash;
+
+    function setValidHash(bytes32 hash) external {
+        _validHash = hash;
+    }
+
+    function isValidSignature(bytes32 hash, bytes calldata) external view returns (bytes4) {
+        if (hash == _validHash) {
+            return 0x1626ba7e; // EIP-1271 magic value
+        }
+        return 0xffffffff;
     }
 }

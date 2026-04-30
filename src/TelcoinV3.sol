@@ -8,8 +8,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 import {IEIP3009} from "./interfaces/IEIP3009.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -37,6 +38,9 @@ contract TelcoinV3 is IERC20Mintable, IEIP3009, ERC20Permit, Pausable, Roles, Ac
     bytes32 public constant CANCEL_AUTHORIZATION_TYPEHASH = keccak256(
         "CancelAuthorization(address authorizer,bytes32 nonce)"
     );
+    bytes32 private constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
 
     // EIP-3009 authorization states (authorizer => nonce => used)
     mapping(address => mapping(bytes32 => bool)) private _authorizationStates;
@@ -49,6 +53,7 @@ contract TelcoinV3 is IERC20Mintable, IEIP3009, ERC20Permit, Pausable, Roles, Ac
     error AuthorizationExpired();
     error AuthorizationAlreadyUsed();
     error CallerMustBePayee();
+    error InvalidSignature();
 
     /**
      * @dev Constructor that optionally mints an initial supply to the admin address
@@ -109,6 +114,38 @@ contract TelcoinV3 is IERC20Mintable, IEIP3009, ERC20Permit, Pausable, Roles, Ac
         if (_to == address(0)) revert ZeroAddress();
         if (_amount == 0) revert ZeroAmount();
         IERC20(_token).safeTransfer(_to, _amount);
+    }
+
+    // --------
+    // EIP-2612
+    // --------
+
+    /**
+     * @notice Overrides ERC20Permit.permit to support EIP-1271 smart contract wallet signatures.
+     * @dev Uses SignatureChecker instead of raw ECDSA.recover so both EOAs and contract wallets
+     *      (Gnosis Safe, ERC-4337 accounts) can sign permits.
+     */
+    function permit(
+        address owner_,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public override {
+        if (block.timestamp > deadline) {
+            revert ERC2612ExpiredSignature(deadline);
+        }
+
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner_, spender, value, _useNonce(owner_), deadline));
+        bytes32 hash = _hashTypedDataV4(structHash);
+
+        if (!SignatureChecker.isValidSignatureNow(owner_, hash, abi.encodePacked(r, s, v))) {
+            revert InvalidSignature();
+        }
+
+        _approve(owner_, spender, value);
     }
 
     // --------
@@ -227,10 +264,11 @@ contract TelcoinV3 is IERC20Mintable, IEIP3009, ERC20Permit, Pausable, Roles, Ac
         emit AuthorizationUsed(authorizer, nonce);
     }
 
-    /// @dev Verifies an EIP-712 signature against the expected signer
-    function _verifyEIP712Signature(address signer, bytes32 structHash, uint8 v, bytes32 r, bytes32 s) private view {
+    /// @dev Verifies an EIP-712 signature against the expected signer (supports EOA and EIP-1271 contract wallets)
+    function _verifyEIP712Signature(address signer_, bytes32 structHash, uint8 v, bytes32 r, bytes32 s) private view {
         bytes32 digest = _hashTypedDataV4(structHash);
-        address recovered = ECDSA.recover(digest, v, r, s);
-        if (recovered != signer) revert ECDSA.ECDSAInvalidSignature();
+        if (!SignatureChecker.isValidSignatureNow(signer_, digest, abi.encodePacked(r, s, v))) {
+            revert InvalidSignature();
+        }
     }
 }
