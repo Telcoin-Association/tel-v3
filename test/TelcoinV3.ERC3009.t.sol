@@ -418,6 +418,111 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         token.transferWithAuthorization(address(wallet), user, 100 ether, validAfter, validBefore, nonce, 27, bytes32(uint256(1)), bytes32(uint256(2)));
     }
 
+    // -----------------------------------
+    // bytes signature overloads (EIP-1271)
+    // -----------------------------------
+
+    /// @notice transferWithAuthorization(bytes) works with EOA signature passed as bytes.
+    function test_TransferAuth_BytesSignature_EOA() public {
+        uint256 amount = 200 ether;
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+        bytes32 nonce = bytes32(uint256(50));
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), signer, user, amount, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        uint256 preBal = token.balanceOf(user);
+
+        token.transferWithAuthorization(signer, user, amount, validAfter, validBefore, nonce, abi.encodePacked(r, s, v));
+
+        assertEq(token.balanceOf(user), preBal + amount);
+        assertTrue(token.authorizationState(signer, nonce));
+    }
+
+    /// @notice transferWithAuthorization(bytes) works with EIP-1271 wallet passing arbitrary blob.
+    function test_TransferAuth_BytesSignature_EIP1271Wallet() public {
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
+
+        vm.prank(bridge);
+        token.mint(address(wallet), 1000 ether);
+
+        bytes32 nonce = bytes32(uint256(51));
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+        uint256 amount = 100 ether;
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), address(wallet), user, amount, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        wallet.setValidHash(digest);
+
+        uint256 preBal = token.balanceOf(user);
+
+        // Arbitrary-length signature blob (simulating multi-sig Safe)
+        bytes memory fakeSig = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)), uint8(27), bytes("extra-safe-sigs"));
+        token.transferWithAuthorization(address(wallet), user, amount, validAfter, validBefore, nonce, fakeSig);
+
+        assertEq(token.balanceOf(user), preBal + amount);
+    }
+
+    /// @notice receiveWithAuthorization(bytes) works with EOA signature passed as bytes.
+    function test_ReceiveAuth_BytesSignature_EOA() public {
+        uint256 amount = 150 ether;
+        uint256 validAfter = block.timestamp - 1;
+        uint256 validBefore = block.timestamp + 1 hours;
+        bytes32 nonce = bytes32(uint256(52));
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), signer, user, amount, validAfter, validBefore, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        uint256 preBal = token.balanceOf(user);
+
+        vm.prank(user);
+        token.receiveWithAuthorization(signer, user, amount, validAfter, validBefore, nonce, abi.encodePacked(r, s, v));
+
+        assertEq(token.balanceOf(user), preBal + amount);
+    }
+
+    /// @notice cancelAuthorization(bytes) works with EOA signature passed as bytes.
+    function test_CancelAuth_BytesSignature_EOA() public {
+        bytes32 nonce = bytes32(uint256(53));
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.CANCEL_AUTHORIZATION_TYPEHASH(), signer, nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+
+        token.cancelAuthorization(signer, nonce, abi.encodePacked(r, s, v));
+
+        assertTrue(token.authorizationState(signer, nonce));
+    }
+
+    /// @notice cancelAuthorization(bytes) with EIP-1271 wallet passing arbitrary blob.
+    function test_CancelAuth_BytesSignature_EIP1271Wallet() public {
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
+        bytes32 nonce = bytes32(uint256(54));
+
+        bytes32 structHash = keccak256(
+            abi.encode(token.CANCEL_AUTHORIZATION_TYPEHASH(), address(wallet), nonce)
+        );
+        bytes32 digest = _buildDigest(structHash);
+        wallet.setValidHash(digest);
+
+        bytes memory fakeSig = abi.encodePacked(bytes32(uint256(1)), bytes32(uint256(2)), uint8(27), bytes("safe-cancel-sig"));
+        token.cancelAuthorization(address(wallet), nonce, fakeSig);
+
+        assertTrue(token.authorizationState(address(wallet), nonce));
+    }
+
     // ---------
     // Fuzz Test
     // ---------
