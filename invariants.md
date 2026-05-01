@@ -682,7 +682,7 @@ token != address(0) (enforced by constructor revert)
 **Invariant**: `permit()` sets an ERC-20 allowance using an EIP-712 signed message instead of an on-chain `approve()` transaction
 
 ```
-∀ permit(owner, spender, value, deadline, v, r, s):
+∀ permit(owner, spender, value, deadline, signature):
   valid signature from owner → allowance(owner, spender) = value
   invalid signature → revert InvalidSignature
   block.timestamp > deadline → revert ERC2612ExpiredSignature
@@ -690,8 +690,9 @@ token != address(0) (enforced by constructor revert)
 
 **Properties**:
 
-- Overrides OpenZeppelin's `ERC20Permit.permit()` to use `SignatureChecker` instead of `ECDSA.recover`
-- Supports both EOA signatures and EIP-1271 smart contract wallet signatures
+- Two overloads: `(v, r, s)` for EIP-2612 spec compliance (delegates to bytes version), and `bytes signature` for full EIP-1271 support
+- Uses `SignatureChecker` which routes to `ECDSA.recover` for EOAs or `IERC1271.isValidSignature` for contract wallets
+- The `bytes` overload accepts arbitrary-length signature blobs (e.g. Gnosis Safe multi-sig concatenated signatures)
 - Sequential nonce (`_nonces[owner]`) increments on every successful permit; reverts roll back the increment
 
 ### P2: Nonce Sequentiality
@@ -728,7 +729,7 @@ paused == true → transferFrom() after permit still reverts (transfer blocked b
 **Invariant**: `transferWithAuthorization` executes a transfer using an EIP-712 signed authorization from the `from` address
 
 ```
-∀ transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, v, r, s):
+∀ transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, signature):
   valid signature from `from`
     AND block.timestamp > validAfter
     AND block.timestamp < validBefore
@@ -736,6 +737,11 @@ paused == true → transferFrom() after permit still reverts (transfer blocked b
     → transfer(from, to, value) + nonce marked used
 
   any condition violated → revert
+```
+
+**Note**: Both `(v, r, s)` and `bytes signature` overloads exist. The `(v, r, s)` version packs and delegates to the `bytes` version.
+
+```
 ```
 
 ### T2: Receive Authorization Front-Running Protection
@@ -797,7 +803,7 @@ paused == true → receiveWithAuthorization() reverts with EnforcedPause
 **Invariant**: `cancelAuthorization` marks a nonce as used, preventing future use by `transferWithAuthorization` or `receiveWithAuthorization`
 
 ```
-∀ cancelAuthorization(authorizer, nonce, v, r, s):
+∀ cancelAuthorization(authorizer, nonce, signature):
   valid signature from authorizer
     AND !_authorizationStates[authorizer][nonce]
     → _authorizationStates[authorizer][nonce] = true + emit AuthorizationCanceled
@@ -811,29 +817,31 @@ paused == true → receiveWithAuthorization() reverts with EnforcedPause
 
 ### SC1: Dual Signature Support
 
-**Invariant**: Both `permit()` and all EIP-3009 functions accept EOA signatures AND EIP-1271 smart contract wallet signatures
+**Invariant**: Both `permit()` and all EIP-3009 functions accept EOA signatures AND EIP-1271 smart contract wallet signatures (including multi-sig Gnosis Safes)
 
 ```
 ∀ signature verification:
-  signer.code.length == 0 → EOA path (ECDSA.tryRecover)
-  signer.code.length > 0  → contract path (staticcall to signer.isValidSignature)
+  signer.code.length == 0 → EOA path (ECDSA.tryRecover on the bytes signature)
+  signer.code.length > 0  → contract path (staticcall to signer.isValidSignature, forwarding full signature blob)
 ```
 
 **Properties**:
 
-- Uses OpenZeppelin's `SignatureChecker.isValidSignatureNow()` in both `permit()` (line 144) and `_verifyEIP712Signature()` (line 270)
+- Each function has two overloads: `(v, r, s)` (delegates to bytes version) and `bytes signature` (core implementation)
+- The `bytes` overload accepts arbitrary-length blobs, enabling multi-sig Gnosis Safes (threshold > 1) whose concatenated owner signatures exceed 65 bytes
+- Uses OpenZeppelin's `SignatureChecker.isValidSignatureNow()` in both `permit()` and `_verifyEIP712Signature()`
 - The `staticcall` prevents the signer contract from modifying state during verification
 - A malicious EIP-1271 contract returning `0x1626ba7e` for arbitrary hashes can only authorize transfers from its own balance — it cannot affect other users
 
 ### SC2: Consistent Verification Across All Signature Paths
 
-**Invariant**: All four signature-verified functions use the same verification mechanism
+**Invariant**: All eight signature-verified functions (4 `(v,r,s)` + 4 `bytes`) use the same verification mechanism
 
 ```
-permit()                    → SignatureChecker.isValidSignatureNow()
-transferWithAuthorization() → _verifyEIP712Signature() → SignatureChecker.isValidSignatureNow()
-receiveWithAuthorization()  → _verifyEIP712Signature() → SignatureChecker.isValidSignatureNow()
-cancelAuthorization()       → _verifyEIP712Signature() → SignatureChecker.isValidSignatureNow()
+permit(v,r,s)                    → permit(bytes) → SignatureChecker.isValidSignatureNow()
+transferWithAuthorization(v,r,s) → transferWithAuthorization(bytes) → _verifyEIP712Signature() → SignatureChecker
+receiveWithAuthorization(v,r,s)  → receiveWithAuthorization(bytes) → _verifyEIP712Signature() → SignatureChecker
+cancelAuthorization(v,r,s)       → cancelAuthorization(bytes) → _verifyEIP712Signature() → SignatureChecker
 ```
 
 ---

@@ -40,7 +40,7 @@ graph LR
 - **`renounceRole()` disabled**: no role holder, including `DEFAULT_ADMIN_ROLE`, can voluntarily renounce their role — roles may only be revoked by an admin
 - **EIP-2612 (permit)**: gasless approvals via signed EIP-712 messages — users can authorize a spender without an on-chain `approve()` transaction
 - **EIP-3009 (transferWithAuthorization)**: gasless transfers via signed EIP-712 messages — `transferWithAuthorization` (anyone can submit), `receiveWithAuthorization` (only payee can submit, prevents front-running), and `cancelAuthorization` (revoke unused nonces)
-- **EIP-1271 smart contract wallet support**: both `permit()` and EIP-3009 functions use OpenZeppelin's `SignatureChecker` instead of raw `ECDSA.recover`, enabling Gnosis Safe, ERC-4337 accounts, and other smart contract wallets to sign authorizations
+- **EIP-1271 smart contract wallet support**: all signature-verified functions provide both `(v, r, s)` overloads (EIP-2612/3009 standard) and `bytes signature` overloads for full EIP-1271 compatibility. The `(v, r, s)` versions delegate to the `bytes` versions internally. The `bytes` overloads accept arbitrary-length signature blobs (e.g. Gnosis Safe multi-sig concatenated signatures, ERC-4337 account signatures) and forward them to `SignatureChecker`, which routes to `ECDSA.recover` for EOAs or `IERC1271.isValidSignature` for contract wallets
 - **Independent nonce systems**: EIP-2612 uses sequential `uint256` nonces (via OZ `Nonces`); EIP-3009 uses random `bytes32` nonces tracked in a separate mapping — no interference between the two
 
 ### Migration Contract
@@ -220,6 +220,7 @@ migration.recoverERC20(destination, tokenAddress, amount)
 13. **EIP-712 Domain Separation**: EIP-2612 and EIP-3009 share a single EIP-712 domain separator (via `ERC20Permit` / `EIP712`), but use distinct type hashes — a permit signature cannot be replayed as a `transferWithAuthorization` or vice versa. Cross-chain replay is prevented by `chainId` in the domain separator
 14. **EIP-3009 Replay Protection**: Each authorization nonce is a random `bytes32` that transitions `false → true` (one-shot latch) and can never revert to `false`. `cancelAuthorization` marks a nonce as used without executing a transfer
 15. **EIP-1271 Signature Verification**: `SignatureChecker.isValidSignatureNow()` issues a `staticcall` to the signer contract for EIP-1271 validation — no state modification is possible during the callback
+16. **Dual Signature Overloads**: Each signature-verified function (`permit`, `transferWithAuthorization`, `receiveWithAuthorization`, `cancelAuthorization`) has both a standard `(v, r, s)` overload (for EIP spec compliance and EOA convenience) and a `bytes signature` overload (for multi-sig wallets and arbitrary EIP-1271 blobs). The `(v, r, s)` versions pack and delegate to the `bytes` versions
 
 ## Gas Estimates
 

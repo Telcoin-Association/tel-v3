@@ -76,6 +76,45 @@ interface IEIP3009 {
     ) external;
 
     /**
+     * @notice Execute a transfer with a signed authorization (arbitrary-length signature)
+     * @dev Supports EIP-1271 contract wallets (e.g. multi-sig Gnosis Safes).
+     *      EOA signatures should be packed as abi.encodePacked(r, s, v).
+     */
+    function transferWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        bytes memory signature
+    ) external;
+
+    /**
+     * @notice Receive a transfer with a signed authorization (arbitrary-length signature)
+     * @dev Caller must be the payee. Supports EIP-1271 contract wallets.
+     */
+    function receiveWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        bytes memory signature
+    ) external;
+
+    /**
+     * @notice Cancel an authorization (arbitrary-length signature)
+     * @dev Supports EIP-1271 contract wallets.
+     */
+    function cancelAuthorization(
+        address authorizer,
+        bytes32 nonce,
+        bytes memory signature
+    ) external;
+
+    /**
      * @notice Returns the state of an authorization
      * @param authorizer  Authorizer's address
      * @param nonce       Nonce of the authorization
