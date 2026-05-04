@@ -77,6 +77,7 @@ contract DeployAllToTestnet is DeployUtility, Roles {
 
     uint256 internal constant INITIAL_TELV3_SUPPLY = 100_000_000 ether; // initial supply of 100M tokens per chain
     uint256 internal constant MIGRATION_DURATION = 365 * 1 days;
+    uint256 internal constant WITHDRAWAL_DELAY = 90 * 1 days;
 
     address internal TESTNET_ADMIN = 0x28937C70A08390c55b65Eab24600c4b059A50991;
 
@@ -317,7 +318,8 @@ contract DeployAllToTestnet is DeployUtility, Roles {
             legacyToken,
             telcoinV3,
             TESTNET_ADMIN,
-            MIGRATION_DURATION
+            MIGRATION_DURATION,
+            WITHDRAWAL_DELAY
         );
         // build init bytecode
         bytes memory telcoinMigratorBytecode = bytes.concat(type(TokenMigration).creationCode, telcoinMigratorParams);

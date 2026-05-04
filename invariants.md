@@ -38,11 +38,11 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 ```
 ∀ time t:
   whole_v2_remaining(t) + whole_v3_minted_via_migration(t) == INITIAL_TOTAL_SUPPLY_whole
-  i.e. (oldToken.totalSupply() - migration.totalOldTokenBurned()) / 1
-       + totalMigrated / DECIMAL_MULTIPLIER
-       == INITIAL_TOTAL_SUPPLY_whole
+  i.e. (oldToken.totalSupply() - oldToken.balanceOf(migrationContract))
+       + oldToken.balanceOf(migrationContract)
+       == oldToken.totalSupply()
 
-  where totalOldTokenBurned() == totalMigrated / DECIMAL_MULTIPLIER  (derived view, not storage)
+  and: telcoinV3 minted via migration == oldToken.balanceOf(migrationContract) * DECIMAL_MULTIPLIER
 ```
 
 **Properties**:
@@ -69,18 +69,19 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 
 ### I3: Migration Irreversibility
 
-**Invariant**: Once tokens are migrated, the operation cannot be reversed
+**Invariant**: Once tokens are migrated, the operation cannot be reversed by end users
 
 ```
 ∀ user u, ∀ migration m:
-  post(m): oldToken.balanceOf(BURN_ADDRESS) = pre(m).oldToken.balanceOf(BURN_ADDRESS) + amount
+  post(m): oldToken.balanceOf(migrationContract) = pre(m).oldToken.balanceOf(migrationContract) + amount
   AND telcoinV3.balanceOf(u) = pre(m).telcoinV3.balanceOf(u) + (amount * DECIMAL_MULTIPLIER)
 ```
 
 **Properties**:
 
-- Old tokens sent to burn address (0x000000000000000000000000000000000000dEaD)
-- No mechanism exists to recover burned tokens
+- Old tokens are escrowed in the migration contract during the migration window
+- Users cannot reverse their migration or reclaim escrowed tokens
+- After `migrationExpiry + withdrawalDelay`, the owner can withdraw all escrowed legacy tokens to reclaim liquidity from legacy pools
 - Prevents double-spending and replay attacks
 
 ### I4: Migration Atomicity
@@ -127,6 +128,7 @@ onlyOwner functions (TokenMigration):
   - pause()
   - unpause()
   - setMigrationExpiry()
+  - withdrawOldTokens()
   - recoverERC20()
 
 onlyOwner functions (TelcoinBridge):
@@ -203,22 +205,40 @@ whenPaused → ∀ user u: migrate() reverts
 
 ### S3: Token Recovery Constraints
 
-**Invariant**: `recoverERC20` can recover any token accidentally sent to the migration contract
+**Invariant**: `recoverERC20` can recover any token accidentally sent to the migration contract, **except** the legacy (old) token
 
 ```
 ∀ recoverERC20(dest, token, amount):
-  dest == address(0) OR dest == BURN_ADDRESS → revert ZeroAddress
+  dest == address(0) → revert ZeroAddress
   token == address(0) → revert ZeroAddress
+  token == address(oldToken) → revert CannotRecoverOldToken
   amount == 0 OR amount > balance → revert InvalidAmount
   otherwise → transfer allowed
 ```
 
 **Properties**:
 
+- Legacy tokens are blocked from `recoverERC20` to prevent bypassing the withdrawal delay; use `withdrawOldTokens()` instead
 - Migration is mint-based; the contract holds no TelcoinV3 reserve, so recovery of TelcoinV3 is not a concern in normal operation
-- Allows recovery of mistakenly sent OldTokens or any other ERC20 for user support
-- Recovered OldTokens can be re-migrated on behalf of users who made mistakes
-- Support mechanism: governance can recover accidentally sent OldTokens and help users complete migration
+- Allows recovery of any other ERC20 accidentally sent to the contract
+
+### S3b: Legacy Token Withdrawal Constraints
+
+**Invariant**: Escrowed legacy tokens can only be withdrawn after `migrationExpiry + withdrawalDelay`
+
+```
+∀ withdrawOldTokens(dest):
+  block.timestamp < migrationExpiry + withdrawalDelay → revert WithdrawalLocked
+  dest == address(0) → revert ZeroAddress
+  oldToken.balanceOf(migrationContract) == 0 → revert InvalidAmount
+  otherwise → transfer entire escrowed balance to dest
+```
+
+**Properties**:
+
+- Owner-only function; withdraws entire escrowed balance in a single call
+- Delay ensures legacy liquidity pool positions can be unwound after migration concludes
+- `recoverERC20` cannot be used to bypass this delay (blocked for oldToken)
 
 ### S4: User Authorization
 
@@ -254,20 +274,20 @@ whenPaused → ∀ user u: migrate() reverts
 - Prevents partial migration confusion
 - Reduces gas costs from multiple transactions
 
-### F2: Burn Address Accumulation
+### F2: Escrow Accumulation
 
-**Invariant**: Burn address monotonically accumulates old tokens
+**Invariant**: Migration contract escrow balance monotonically accumulates old tokens during the migration window
 
 ```
-∀ time t1 < t2:
-  oldToken.balanceOf(BURN_ADDRESS, t2) ≥ oldToken.balanceOf(BURN_ADDRESS, t1)
+∀ time t1 < t2 (where t2 < migrationExpiry + withdrawalDelay):
+  oldToken.balanceOf(migrationContract, t2) ≥ oldToken.balanceOf(migrationContract, t1)
 ```
 
 **Properties**:
 
 - Provides on-chain tracking of migrated amounts
-- Burn address balance = total migrated old tokens
-- No mechanism to decrease burn address balance
+- Escrow balance accumulates during migration; withdrawn by owner after the withdrawal delay
+- `recoverERC20` is blocked for oldToken, preserving escrow integrity
 
 ### F3: Mint-Based Supply Expansion
 
@@ -328,13 +348,15 @@ supply_ethereum + supply_polygon + supply_base = 100B * 10^18
 After migration_end_time:
   migrate() reverts for all callers
   Governance may revoke MINTER_ROLE from migration contract on TelcoinV3
-  Any accidentally sent tokens in migration contract recoverable via recoverERC20()
+  After migrationExpiry + withdrawalDelay:
+    Owner can withdraw all escrowed legacy tokens via withdrawOldTokens()
+  Any accidentally sent tokens (except oldToken) recoverable via recoverERC20()
 ```
 
 **Properties**:
 
 - No unclaimed TelcoinV3 sits in the migration contract (mint-based design)
-- Governance decides post-expiry fate of unclaimed OldToken value via off-chain policy
+- Escrowed legacy tokens remain in the contract until `migrationExpiry + withdrawalDelay`, allowing governance to reclaim liquidity from legacy constant product pools
 - Approximately 1-year initial migration window (managed by Governance off-chain)
 - Migration window can be extended before expiry via `setMigrationExpiry()`
 
@@ -344,18 +366,17 @@ After migration_end_time:
 
 ### ST1: State Consistency
 
-**Invariant**: Contract state variables remain internally consistent
+**Invariant**: Contract state is derivable from on-chain balances
 
 ```
-At any time t:
-  totalOldTokenBurned() == totalMigrated / DECIMAL_MULTIPLIER
-  oldToken.balanceOf(BURN_ADDRESS) >= totalOldTokenBurned()
+At any time t (before withdrawal):
+  v3 minted via migration == oldToken.balanceOf(migrationContract) * DECIMAL_MULTIPLIER
 ```
 
 **Properties**:
 
-- `totalMigrated` is the single source of truth; `totalOldTokenBurned()` is a derived view function (`totalMigrated / DECIMAL_MULTIPLIER`) — not a storage slot
-- Burned tokens correspond exactly to minted new tokens
+- No mutable tracking state; migration progress is derived from the escrowed oldToken balance
+- Escrowed balance can be queried directly via `oldToken.balanceOf(migrationContract)`
 - No state corruption possible; ReentrancyGuard prevents concurrent state modification
 
 ### ST2: Event Emission
@@ -406,19 +427,19 @@ DECIMAL_MULTIPLIER == 10^16 (constant)
 - Cannot be modified post-deployment
 - Ensures conversion consistency
 
-### IM3: Fixed Burn Address
+### IM3: Immutable Withdrawal Delay
 
-**Invariant**: BURN_ADDRESS is constant and well-known
+**Invariant**: `withdrawalDelay` is immutable and set at construction
 
 ```
-BURN_ADDRESS == 0x000000000000000000000000000000000000dEaD (constant)
+withdrawalDelay == immutable value set at construction
 ```
 
 **Properties**:
 
-- Industry-standard burn address
-- Publicly verifiable
-- No private key exists for this address
+- Cannot be modified post-deployment
+- Ensures a guaranteed holding period for escrowed legacy tokens after migration expires
+- Withdrawal is only possible at or after `migrationExpiry + withdrawalDelay`
 
 ---
 
@@ -455,23 +476,25 @@ owner == multisig_wallet_address
 
 ### O3: User Support Workflow
 
-**Invariant**: Governance can assist users who mistakenly send OldTokens to migration contract
+**Invariant**: Governance can assist users who mistakenly send non-legacy tokens to the migration contract
 
 ```
-User mistake flow:
-1. User accidentally sends OldToken to migration contract
+User mistake flow (non-legacy tokens):
+1. User accidentally sends a non-legacy ERC20 to migration contract
 2. User contacts support
-3. Governance calls recoverERC20(supportWallet, oldToken, amount)
-4. Support helps user approve and migrate tokens properly
+3. Governance calls recoverERC20(supportWallet, token, amount)
+4. Tokens returned to user
+
+Note: Legacy (old) tokens sent directly to the contract cannot be recovered
+via recoverERC20 — they become part of the escrow and are withdrawn by the
+owner after the withdrawal delay.
 ```
 
 **Properties**:
 
-- Safety net for user errors
-- Maintains user agency (they still must approve migration)
-- Clear support process
+- Safety net for user errors with non-legacy tokens
+- Legacy tokens are protected from premature recovery (blocked by `CannotRecoverOldToken`)
 - No ability to force migrations on behalf of users
-- Only works for tokens sent to contract, not other mistakes
 
 ---
 
@@ -481,20 +504,21 @@ User mistake flow:
 
 1. **Whole Balance Migration**: Users must migrate entire balance at once (intentional design)
 2. **Migration Window Risk**: Users who do not migrate within timeframe will lose access to their tokens (intentional incentive mechanism)
-3. **Irreversibility**: No mechanism to reverse migrations once completed
+3. **Irreversibility**: No mechanism for users to reverse migrations once completed
 4. **Gas Costs**: Users bear gas costs for migration transaction
-5. **Burn Address Usage**: OldToken sent to dead address (0xdEaD) as TEL v2 lacks native burn functionality
+5. **Escrow Model**: OldToken is held in the migration contract (not burned) to allow governance to reclaim legacy liquidity pool positions after the withdrawal delay
 6. **Supply Distribution**: Slight variations possible between chains, users may need to bridge to chains with remaining liquidity
 
 ### Mitigation Strategies
 
 1. **Clear Documentation**: Comprehensive user guides and warnings
 2. **Role Management**: Ensure migration contract holds `MINTER_ROLE` on TelcoinV3 before launch; revoke post-expiry
-3. **Monitoring**: Real-time tracking of migration progress via `totalMigrated` (storage) and `totalOldTokenBurned()` (derived view)
+3. **Monitoring**: Real-time tracking of migration progress via `oldToken.balanceOf(migrationContract)` and the `TokensMigrated` event
 4. **Grace Period**: Consider extension mechanisms if needed
 5. **Support Channels**: Dedicated assistance for migration issues
-6. **Recovery Mechanism**: Governance can recover accidentally sent OldTokens to help users complete migration
-7. **Extended Claims**: Governance may extend `migrationExpiry` before deadline or grant `MINTER_ROLE` to a new migration contract to support a late-claims period
+6. **Recovery Mechanism**: Governance can recover accidentally sent non-legacy tokens; legacy tokens are protected by the withdrawal delay
+7. **Legacy Liquidity Recovery**: After `migrationExpiry + withdrawalDelay`, governance can withdraw escrowed legacy tokens to reclaim liquidity from constant product pools
+8. **Extended Claims**: Governance may extend `migrationExpiry` before deadline or grant `MINTER_ROLE` to a new migration contract to support a late-claims period
 
 ---
 

@@ -23,6 +23,7 @@ contract DeployScript is Script {
 
     /// @dev Deployment config
     uint256 private migrationDuration = 365 days;
+    uint256 private withdrawalDelay = 90 days;
 
     function run(address telcoinV2, address owner, uint256 initialSupply) external {
         // Get private key from environment
@@ -46,7 +47,7 @@ contract DeployScript is Script {
 
         // Deploy Migration contract first
         bytes memory migrationBytecode = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(telcoinV2, predictedTelcoinV3, owner, migrationDuration)
+            type(TokenMigration).creationCode, abi.encode(telcoinV2, predictedTelcoinV3, owner, migrationDuration, withdrawalDelay)
         );
 
         address migrationAddress = CREATE3_FACTORY.deployCreate3(migrationSalt, migrationBytecode);

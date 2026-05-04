@@ -48,14 +48,16 @@ graph LR
 - **1:1 exchange rate** with automatic decimal conversion (2 → 18)
 - **Mint-based**: mints TelcoinV3 directly; does not hold a pre-funded token reserve
 - **Whole-balance migration**: `migrate()` exchanges the caller's entire OldToken balance in one call
-- **OldToken sent permanently to burn address** (0x000000000000000000000000000000000000dEaD)
+- **Escrow model**: OldToken is held in the migration contract (not burned) so that legacy liquidity pool positions can be unwound after migration concludes
+- **Delayed withdrawal**: owner can withdraw all escrowed legacy tokens via `withdrawOldTokens()` only after `migrationExpiry + withdrawalDelay`
 - **Pausable** by owner for emergency situations
 - **Time-bounded**: migrations revert at or after `migrationExpiry`
 - **Ownable2Step**: ownership transfers require acceptance by the new owner
 - **Owner functions:**
   - Pause/unpause migrations
   - Extend migration expiry via `setMigrationExpiry()`
-  - Recover accidentally sent tokens via `recoverERC20(destination, tokenAddress, amount)`
+  - Withdraw escrowed legacy tokens via `withdrawOldTokens(destination)` (after withdrawal delay)
+  - Recover accidentally sent tokens (excluding legacy token) via `recoverERC20(destination, tokenAddress, amount)`
 
 ### TelcoinBridge (Satellite Chains)
 

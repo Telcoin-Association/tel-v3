@@ -67,7 +67,7 @@ contract TokenMigrationTest is Test, Roles {
         // deploy token migration contract
         bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days, 90 days)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);
@@ -90,32 +90,32 @@ contract TokenMigrationTest is Test, Roles {
     /// @dev Verifies constructor reverts when _oldToken is the zero address.
     function test_Constructor_RevertsWhenOldTokenZero() public {
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
-        new TokenMigration(address(0), address(telcoinV3), owner, 365 days);
+        new TokenMigration(address(0), address(telcoinV3), owner, 365 days, 90 days);
     }
 
     /// @dev Verifies constructor reverts when _telcoinV3 is the zero address.
     function test_Constructor_RevertsWhenNewTokenZero() public {
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
-        new TokenMigration(address(oldToken), address(0), owner, 365 days);
+        new TokenMigration(address(oldToken), address(0), owner, 365 days, 90 days);
     }
 
     /// @dev Verifies constructor reverts when _oldToken and _telcoinV3 are the same address.
     function test_Constructor_RevertsWhenSameAddress() public {
         vm.expectRevert(TokenMigration.SameAddress.selector);
-        new TokenMigration(address(telcoinV3), address(telcoinV3), owner, 365 days);
+        new TokenMigration(address(telcoinV3), address(telcoinV3), owner, 365 days, 90 days);
     }
 
     /// @dev Verifies constructor reverts when _migrationDuration is zero.
     function test_Constructor_RevertsWhenDurationZero() public {
         vm.expectRevert(TokenMigration.InvalidExpiry.selector);
-        new TokenMigration(address(oldToken), address(telcoinV3), owner, 0);
+        new TokenMigration(address(oldToken), address(telcoinV3), owner, 0, 90 days);
     }
 
     // ---------------
     // Migration Tests
     // ---------------
 
-    /// @dev Verifies a full migration: balances, burn address, supply, and tracking state update correctly.
+    /// @dev Verifies a full migration: balances, escrow, supply, and tracking state update correctly.
     function test_Migration() public {
         vm.startPrank(user1);
 
@@ -124,8 +124,8 @@ contract TokenMigrationTest is Test, Roles {
         assertEq(telcoinV3.balanceOf(user1), 0);
         uint256 preSupply = telcoinV3.totalSupply();
 
-        // take current burn balance since this forks live
-        uint256 currentBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+        // take current escrow balance since this forks live
+        uint256 currentEscrowBalance = oldToken.balanceOf(address(migration));
         uint256 quote = migration.getAmountOut(INITIAL_USER_BAL);
 
         // approve migration contract
@@ -140,12 +140,9 @@ contract TokenMigrationTest is Test, Roles {
         assertEq(oldToken.balanceOf(user1), 0);
         assertEq(telcoinV3.balanceOf(user1), amountNewTokens);
         assertEq(telcoinV3.totalSupply(), preSupply + amountNewTokens);
-        // check tokens were burned
-        uint256 expectedBurnBalance = currentBurnBalance + INITIAL_USER_BAL;
-        assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), expectedBurnBalance);
-
-        // check totalOldTokenBurned tracking
-        assertEq(migration.totalOldTokenBurned(), INITIAL_USER_BAL);
+        // check tokens were escrowed
+        uint256 expectedEscrowBalance = currentEscrowBalance + INITIAL_USER_BAL;
+        assertEq(oldToken.balanceOf(address(migration)), expectedEscrowBalance);
 
         vm.stopPrank();
     }
@@ -188,30 +185,6 @@ contract TokenMigrationTest is Test, Roles {
         // amount up to user's balance migrated
         uint256 expectedBalance = userBalance * migration.DECIMAL_MULTIPLIER();
         assertEq(telcoinV3.balanceOf(user1), expectedBalance);
-    }
-
-    // --------------
-    // Tracking Tests
-    // --------------
-
-    /// @dev Verifies totalOldTokenBurned accumulates correctly across multiple users.
-    function test_TotalOldTokenBurned_AccumulatesAcrossUsers() public {
-        assertEq(migration.totalOldTokenBurned(), 0);
-
-        vm.startPrank(user1);
-        oldToken.approve(address(migration), INITIAL_USER_BAL);
-        migration.migrate();
-        vm.stopPrank();
-
-        assertEq(migration.totalOldTokenBurned(), INITIAL_USER_BAL);
-
-        vm.startPrank(user2);
-        oldToken.approve(address(migration), INITIAL_USER_BAL);
-        migration.migrate();
-        vm.stopPrank();
-
-        assertEq(migration.totalOldTokenBurned(), INITIAL_USER_BAL * 2);
-        assertEq(migration.totalOldTokenBurned() * migration.DECIMAL_MULTIPLIER(), migration.totalMigrated());
     }
 
     // ----------------------
@@ -412,85 +385,10 @@ contract TokenMigrationTest is Test, Roles {
 
     // ~ recoverERC20 ~
 
-    /// @dev Verifies recoverERC20 returns the full stuck OldToken balance to the specified address.
-    function test_RecoverStuckOldToken() public {
-        address migrationContract = address(migration);
-        // sanity check
-        assertEq(oldToken.balanceOf(migrationContract), 0);
-
-        // transfer old token instead of migrating
-        vm.startPrank(user1);
-        oldToken.approve(migrationContract, INITIAL_USER_BAL);
-        require(oldToken.transfer(migrationContract, INITIAL_USER_BAL));
-        vm.stopPrank();
-
-        // check old tokens received
-        assertEq(oldToken.balanceOf(migrationContract), INITIAL_USER_BAL);
-        assertEq(oldToken.balanceOf(user1), 0);
-
-        // recover old tokens (full balance)
+    /// @dev Verifies recoverERC20 reverts when attempting to recover escrowed old tokens.
+    function test_RecoverERC20_revertsForOldToken() public {
         vm.prank(owner);
-        migration.recoverERC20(user1, OLDTOKEN_ADDRESS, INITIAL_USER_BAL);
-        assertEq(oldToken.balanceOf(user1), INITIAL_USER_BAL);
-        assertEq(oldToken.balanceOf(migrationContract), 0);
-    }
-
-    /// @dev Verifies recoverERC20 can recover a partial amount, leaving the remainder in the contract.
-    function test_RecoverERC20_partialAmount() public {
-        address migrationContract = address(migration);
-        uint256 partialAmount = INITIAL_USER_BAL / 4;
-
-        // transfer old token to contract
-        vm.startPrank(user1);
-        oldToken.approve(migrationContract, INITIAL_USER_BAL);
-        require(oldToken.transfer(migrationContract, INITIAL_USER_BAL));
-        vm.stopPrank();
-
-        uint256 preBalUser = oldToken.balanceOf(user2);
-        uint256 preBalMigrationContract = oldToken.balanceOf(migrationContract);
-
-        // recover only part of the balance
-        vm.prank(owner);
-        migration.recoverERC20(user2, OLDTOKEN_ADDRESS, partialAmount);
-        assertEq(oldToken.balanceOf(user2), preBalUser + partialAmount);
-        assertEq(oldToken.balanceOf(migrationContract), preBalMigrationContract - partialAmount);
-    }
-
-    /// @dev Verifies recoverERC20 reverts when amount is zero.
-    function test_RecoverERC20_revertsOnZeroAmount() public {
-        address migrationContract = address(migration);
-
-        vm.startPrank(user1);
-        oldToken.approve(migrationContract, INITIAL_USER_BAL);
-        require(oldToken.transfer(migrationContract, INITIAL_USER_BAL));
-        vm.stopPrank();
-
-        vm.prank(owner);
-        vm.expectRevert(TokenMigration.InvalidAmount.selector);
-        migration.recoverERC20(user1, OLDTOKEN_ADDRESS, 0);
-    }
-
-    /// @dev Verifies recoverERC20 reverts when amount exceeds the contract balance.
-    function test_RecoverERC20_revertsWhenAmountExceedsBalance() public {
-        address migrationContract = address(migration);
-
-        vm.startPrank(user1);
-        oldToken.approve(migrationContract, INITIAL_USER_BAL);
-        require(oldToken.transfer(migrationContract, INITIAL_USER_BAL));
-        vm.stopPrank();
-
-        vm.prank(owner);
-        vm.expectRevert(TokenMigration.InvalidAmount.selector);
-        migration.recoverERC20(user1, OLDTOKEN_ADDRESS, INITIAL_USER_BAL + 1);
-    }
-
-    /// @dev Verifies recoverERC20 reverts when the contract holds no balance of the token.
-    function test_RecoverERC20_revertsWhenContractBalanceIsZero() public {
-        // no tokens in contract
-        assertEq(oldToken.balanceOf(address(migration)), 0);
-
-        vm.prank(owner);
-        vm.expectRevert(TokenMigration.InvalidAmount.selector);
+        vm.expectRevert(TokenMigration.CannotRecoverOldToken.selector);
         migration.recoverERC20(user1, OLDTOKEN_ADDRESS, 1);
     }
 
@@ -498,16 +396,7 @@ contract TokenMigrationTest is Test, Roles {
     function test_RecoverERC20_revertsWhenDestinationIsAddressZero() public {
         vm.prank(owner);
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
-        migration.recoverERC20(address(0), OLDTOKEN_ADDRESS, 1);
-    }
-
-    /// @dev Verifies recoverERC20 reverts when destination is the burn address.
-    function test_RecoverERC20_revertsWhenDestinationIsBurnAddress() public {
-        address burnAddress = migration.BURN_ADDRESS();
-
-        vm.prank(owner);
-        vm.expectRevert(TokenMigration.ZeroAddress.selector);
-        migration.recoverERC20(burnAddress, OLDTOKEN_ADDRESS, 1);
+        migration.recoverERC20(address(0), address(telcoinV3), 1);
     }
 
     /// @dev Verifies recoverERC20 reverts when token address is address(0).
@@ -515,5 +404,106 @@ contract TokenMigrationTest is Test, Roles {
         vm.prank(owner);
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
         migration.recoverERC20(user1, address(0), 1);
+    }
+
+    /// @dev Verifies recoverERC20 reverts when the contract holds no balance of the token.
+    function test_RecoverERC20_revertsWhenContractBalanceIsZero() public {
+        assertEq(telcoinV3.balanceOf(address(migration)), 0);
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.InvalidAmount.selector);
+        migration.recoverERC20(user1, address(telcoinV3), 1);
+    }
+
+    /// @dev Verifies recoverERC20 reverts when amount is zero.
+    function test_RecoverERC20_revertsOnZeroAmount() public {
+        // send some telcoinV3 to migration contract
+        vm.prank(owner);
+        telcoinV3.transfer(address(migration), 1000);
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.InvalidAmount.selector);
+        migration.recoverERC20(user1, address(telcoinV3), 0);
+    }
+
+    /// @dev Verifies recoverERC20 reverts when amount exceeds the contract balance.
+    function test_RecoverERC20_revertsWhenAmountExceedsBalance() public {
+        uint256 sendAmount = 1000;
+
+        // send some telcoinV3 to migration contract
+        vm.prank(owner);
+        telcoinV3.transfer(address(migration), sendAmount);
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.InvalidAmount.selector);
+        migration.recoverERC20(user1, address(telcoinV3), sendAmount + 1);
+    }
+
+    // ~ withdrawOldTokens ~
+
+    /// @dev Verifies withdrawOldTokens succeeds after migrationExpiry + withdrawalDelay.
+    function test_WithdrawOldTokens_success() public {
+        // migrate first to escrow tokens
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        uint256 escrowedBalance = oldToken.balanceOf(address(migration));
+        assertEq(escrowedBalance, INITIAL_USER_BAL);
+
+        // warp past migrationExpiry + withdrawalDelay
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+
+        uint256 user2BalBefore = oldToken.balanceOf(user2);
+
+        vm.prank(owner);
+        migration.withdrawOldTokens(user2);
+
+        assertEq(oldToken.balanceOf(address(migration)), 0);
+        assertEq(oldToken.balanceOf(user2), user2BalBefore + INITIAL_USER_BAL);
+    }
+
+    /// @dev Verifies withdrawOldTokens reverts before the withdrawal delay has passed.
+    function test_WithdrawOldTokens_revertsBeforeDelay() public {
+        // migrate first
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        // warp to just before unlock
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay() - 1);
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.WithdrawalLocked.selector);
+        migration.withdrawOldTokens(user2);
+    }
+
+    /// @dev Verifies withdrawOldTokens reverts when no tokens are escrowed.
+    function test_WithdrawOldTokens_revertsWhenEmpty() public {
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.InvalidAmount.selector);
+        migration.withdrawOldTokens(user2);
+    }
+
+    /// @dev Verifies withdrawOldTokens reverts when called by non-owner.
+    function test_WithdrawOldTokens_revertsIfNonOwner() public {
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+
+        vm.prank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        migration.withdrawOldTokens(user2);
+    }
+
+    /// @dev Verifies withdrawOldTokens reverts when destination is address(0).
+    function test_WithdrawOldTokens_revertsWhenDestinationZero() public {
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.ZeroAddress.selector);
+        migration.withdrawOldTokens(address(0));
     }
 }
