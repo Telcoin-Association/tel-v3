@@ -7,7 +7,12 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
+import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
+import {IEIP3009} from "./interfaces/IEIP3009.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Roles} from "./helpers/Roles.sol";
@@ -15,24 +20,47 @@ import {Roles} from "./helpers/Roles.sol";
 /**
  * @title TelcoinV3
  * @author Telcoin Association
- * @notice Telcoin ERC20 token with 18 decimals. Supports role-based minting/burning and pausable transfers.
+ * @notice Telcoin ERC20 token with 18 decimals. Supports role-based minting/burning, pausable transfers,
+ *         EIP-2612 (permit) and EIP-3009 (transferWithAuthorization).
  */
-contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnumerable {
+contract TelcoinV3 is IERC20Mintable, IEIP3009, ERC20Permit, Pausable, Roles, AccessControlEnumerable {
     using SafeERC20 for IERC20;
 
     uint256 public constant MIGRATION_SUPPLY_CAP = 100_000_000_000 ether; // 100B tokens with 18 decimals
+
+    // EIP-3009 type hashes
+    bytes32 public constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+        "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
+    bytes32 public constant RECEIVE_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+        "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
+    bytes32 public constant CANCEL_AUTHORIZATION_TYPEHASH = keccak256(
+        "CancelAuthorization(address authorizer,bytes32 nonce)"
+    );
+    bytes32 public constant PERMIT_TYPEHASH = keccak256(
+        "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+    );
+
+    // EIP-3009 authorization states (authorizer => nonce => used)
+    mapping(address => mapping(bytes32 => bool)) internal _authorizationStates;
 
     error SupplyCapExceeded();
     error CannotRenounceRole();
     error ZeroAddress();
     error ZeroAmount();
+    error AuthorizationNotYetValid();
+    error AuthorizationExpired();
+    error AuthorizationAlreadyUsed();
+    error CallerMustBePayee();
+    error InvalidSignature();
 
     /**
      * @dev Constructor that optionally mints an initial supply to the admin address
      * @param initialSupply_ The initial supply to mint on this chain. Tokens go to admin. Can be 0.
      * @param admin_ The owner (Telcoin TAO Governance Safe)
      */
-    constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") {
+    constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") ERC20Permit("Telcoin") {
         if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
         _mint(admin_, initialSupply_);
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
@@ -88,6 +116,172 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
         IERC20(_token).safeTransfer(_to, _amount);
     }
 
+    // --------
+    // EIP-2612
+    // --------
+
+    /**
+     * @notice Overrides ERC20Permit.permit to support EIP-1271 smart contract wallet signatures.
+     * @dev EOA wallet signatures should be packed in the order of r, s, v.
+     *      For multi-sig wallets (Gnosis Safe threshold > 1), use the bytes signature overload.
+     */
+    function permit(
+        address owner_,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public override {
+        permit(owner_, spender, value, deadline, abi.encodePacked(r, s, v));
+    }
+
+    /**
+     * @notice Permit with arbitrary-length signature for full EIP-1271 support.
+     * @dev Accepts any signature format — EOA (65 bytes packed r,s,v) or multi-sig blobs
+     *      (Gnosis Safe concatenated signatures). Uses SignatureChecker which routes to
+     *      ECDSA.recover for EOAs or IERC1271.isValidSignature for contract wallets.
+     */
+    function permit(
+        address owner_,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        bytes memory signature
+    ) public {
+        if (block.timestamp > deadline) {
+            revert ERC2612ExpiredSignature(deadline);
+        }
+
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner_, spender, value, _useNonce(owner_), deadline));
+        bytes32 hash = _hashTypedDataV4(structHash);
+
+        if (!SignatureChecker.isValidSignatureNow(owner_, hash, signature)) {
+            revert InvalidSignature();
+        }
+
+        _approve(owner_, spender, value);
+    }
+
+    // --------
+    // EIP-3009
+    // --------
+
+    /// @inheritdoc IEIP3009
+    function authorizationState(address authorizer, bytes32 nonce) external view returns (bool) {
+        return _authorizationStates[authorizer][nonce];
+    }
+
+    /// @inheritdoc IEIP3009
+    function transferWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, abi.encodePacked(r, s, v));
+    }
+
+    /**
+     * @notice Execute a transfer with a signed authorization (arbitrary-length signature).
+     * @dev Supports multi-sig wallets (Gnosis Safe) and ERC-4337 accounts via EIP-1271.
+     *      EOA signatures should be packed as abi.encodePacked(r, s, v).
+     */
+    function transferWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        bytes memory signature
+    ) public {
+        _requireValidAuthorization(from, validAfter, validBefore, nonce);
+
+        bytes32 structHash = keccak256(
+            abi.encode(TRANSFER_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce)
+        );
+        _verifyEIP712Signature(from, structHash, signature);
+
+        _markAuthorizationUsed(from, nonce);
+        _transfer(from, to, value);
+    }
+
+    /// @inheritdoc IEIP3009
+    function receiveWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        receiveWithAuthorization(from, to, value, validAfter, validBefore, nonce, abi.encodePacked(r, s, v));
+    }
+
+    /**
+     * @notice Receive a transfer with a signed authorization (arbitrary-length signature).
+     * @dev Caller must be the payee (to == msg.sender) to prevent front-running.
+     */
+    function receiveWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        bytes memory signature
+    ) public {
+        if (to != msg.sender) revert CallerMustBePayee();
+        _requireValidAuthorization(from, validAfter, validBefore, nonce);
+
+        bytes32 structHash = keccak256(
+            abi.encode(RECEIVE_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce)
+        );
+        _verifyEIP712Signature(from, structHash, signature);
+
+        _markAuthorizationUsed(from, nonce);
+        _transfer(from, to, value);
+    }
+
+    /// @inheritdoc IEIP3009
+    function cancelAuthorization(
+        address authorizer,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+        cancelAuthorization(authorizer, nonce, abi.encodePacked(r, s, v));
+    }
+
+    /**
+     * @notice Cancel an authorization (arbitrary-length signature).
+     * @dev Marks the nonce as used, preventing future use by transfer or receive.
+     */
+    function cancelAuthorization(
+        address authorizer,
+        bytes32 nonce,
+        bytes memory signature
+    ) public {
+        if (_authorizationStates[authorizer][nonce]) revert AuthorizationAlreadyUsed();
+
+        bytes32 structHash = keccak256(abi.encode(CANCEL_AUTHORIZATION_TYPEHASH, authorizer, nonce));
+        _verifyEIP712Signature(authorizer, structHash, signature);
+
+        _authorizationStates[authorizer][nonce] = true;
+        emit AuthorizationCanceled(authorizer, nonce);
+    }
+
     // --------------
     // Access Control
     // --------------
@@ -111,5 +305,31 @@ contract TelcoinV3 is IERC20Mintable, ERC20, Pausable, Roles, AccessControlEnume
             revert EnforcedPause();
         }
         ERC20._update(from, to, value);
+    }
+
+    /// @dev Validates authorization timing and nonce state
+    function _requireValidAuthorization(
+        address authorizer,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce
+    ) private view {
+        if (block.timestamp <= validAfter) revert AuthorizationNotYetValid();
+        if (block.timestamp >= validBefore) revert AuthorizationExpired();
+        if (_authorizationStates[authorizer][nonce]) revert AuthorizationAlreadyUsed();
+    }
+
+    /// @dev Marks an authorization nonce as used
+    function _markAuthorizationUsed(address authorizer, bytes32 nonce) private {
+        _authorizationStates[authorizer][nonce] = true;
+        emit AuthorizationUsed(authorizer, nonce);
+    }
+
+    /// @dev Verifies an EIP-712 signature against the expected signer (supports EOA and EIP-1271 contract wallets)
+    function _verifyEIP712Signature(address signer_, bytes32 structHash, bytes memory signature) private view {
+        bytes32 digest = _hashTypedDataV4(structHash);
+        if (!SignatureChecker.isValidSignatureNow(signer_, digest, signature)) {
+            revert InvalidSignature();
+        }
     }
 }

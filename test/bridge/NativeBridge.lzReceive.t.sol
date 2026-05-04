@@ -99,6 +99,8 @@ contract NativeBridgeLzReceiveTest is BaseSetup {
     /// @notice lzReceive credits exactly the correct native TEL amount for any valid recipient and shared-decimal amount.
     function testFuzz_NativeLzReceive(address recipient, uint64 amountSD) public {
         vm.assume(recipient != address(0));
+        vm.assume(uint160(recipient) > 0xff); // exclude precompiles that cannot receive ETH
+        vm.assume(recipient.code.length == 0); // exclude contracts that may not accept ETH
         vm.assume(amountSD > 0);
 
         uint256 amountLD = uint256(amountSD) * 1e12;

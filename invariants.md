@@ -675,6 +675,212 @@ token != address(0) (enforced by constructor revert)
 
 ---
 
+## EIP-2612 (Permit) Invariants
+
+### P1: Gasless Approval via Signed Message
+
+**Invariant**: `permit()` sets an ERC-20 allowance using an EIP-712 signed message instead of an on-chain `approve()` transaction
+
+```
+∀ permit(owner, spender, value, deadline, signature):
+  valid signature from owner → allowance(owner, spender) = value
+  invalid signature → revert InvalidSignature
+  block.timestamp > deadline → revert ERC2612ExpiredSignature
+```
+
+**Properties**:
+
+- Two overloads: `(v, r, s)` for EIP-2612 spec compliance (delegates to bytes version), and `bytes signature` for full EIP-1271 support
+- Uses `SignatureChecker` which routes to `ECDSA.recover` for EOAs or `IERC1271.isValidSignature` for contract wallets
+- The `bytes` overload accepts arbitrary-length signature blobs (e.g. Gnosis Safe multi-sig concatenated signatures)
+- Sequential nonce (`_nonces[owner]`) increments on every successful permit; reverts roll back the increment
+
+### P2: Nonce Sequentiality
+
+**Invariant**: EIP-2612 nonces are sequential per address and monotonically increasing
+
+```
+∀ address a:
+  nonces(a) after successful permit == nonces(a) before + 1
+  nonces(a) can never decrease
+```
+
+**Properties**:
+
+- Managed by OpenZeppelin's `Nonces` contract via `_useNonce(owner_)`
+- Nonce is consumed inside the permit function; a revert (invalid sig, expired deadline) rolls back the increment
+- Completely independent from EIP-3009 nonces (different type, different storage)
+
+### P3: Permit Works While Paused
+
+**Invariant**: `permit()` succeeds even when the token is paused because it calls `_approve()`, not `_update()`
+
+```
+paused == true → permit() succeeds (approval only, no transfer)
+paused == true → transferFrom() after permit still reverts (transfer blocked by _update)
+```
+
+---
+
+## EIP-3009 (Transfer With Authorization) Invariants
+
+### T1: Authorized Transfer via Signed Message
+
+**Invariant**: `transferWithAuthorization` executes a transfer using an EIP-712 signed authorization from the `from` address
+
+```
+∀ transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, signature):
+  valid signature from `from`
+    AND block.timestamp > validAfter
+    AND block.timestamp < validBefore
+    AND !_authorizationStates[from][nonce]
+    → transfer(from, to, value) + nonce marked used
+
+  any condition violated → revert
+```
+
+**Note**: Both `(v, r, s)` and `bytes signature` overloads exist. The `(v, r, s)` version packs and delegates to the `bytes` version.
+
+```
+```
+
+### T2: Receive Authorization Front-Running Protection
+
+**Invariant**: `receiveWithAuthorization` requires `msg.sender == to`, preventing front-running of the signed authorization
+
+```
+∀ receiveWithAuthorization(from, to, value, ...):
+  msg.sender != to → revert CallerMustBePayee
+```
+
+**Properties**:
+
+- `transferWithAuthorization` is callable by anyone (relayer-friendly but front-runnable)
+- `receiveWithAuthorization` restricts the caller to the payee, mitigating front-running
+- Both use distinct EIP-712 type hashes — a `transferWithAuthorization` signature cannot be replayed as `receiveWithAuthorization`
+
+### T3: Nonce One-Shot Latch
+
+**Invariant**: EIP-3009 nonces are random `bytes32` values that transition `false → true` and never revert to `false`
+
+```
+∀ address a, ∀ nonce n:
+  _authorizationStates[a][n]: false → true (via transfer, receive, or cancel)
+  _authorizationStates[a][n]: true → true (no path back to false)
+```
+
+**Properties**:
+
+- Prevents replay of used authorizations
+- `cancelAuthorization` marks a nonce as used without executing a transfer
+- Nonce space is `2^256` per address with no sequential constraint
+
+### T4: Time Window Validation
+
+**Invariant**: Authorizations are valid only in the open interval `(validAfter, validBefore)`
+
+```
+block.timestamp <= validAfter → revert AuthorizationNotYetValid
+block.timestamp >= validBefore → revert AuthorizationExpired
+```
+
+**Properties**:
+
+- Both bounds are exclusive: `validAfter == validBefore` creates an unusable authorization (no valid timestamp)
+- `validAfter = 0, validBefore = type(uint256).max` means "no time restriction"
+
+### T5: EIP-3009 Transfers Respect Pause
+
+**Invariant**: `transferWithAuthorization` and `receiveWithAuthorization` route through `_transfer()` → `_update()`, which enforces the pause check
+
+```
+paused == true → transferWithAuthorization() reverts with EnforcedPause
+paused == true → receiveWithAuthorization() reverts with EnforcedPause
+```
+
+### T6: Cancel Authorization
+
+**Invariant**: `cancelAuthorization` marks a nonce as used, preventing future use by `transferWithAuthorization` or `receiveWithAuthorization`
+
+```
+∀ cancelAuthorization(authorizer, nonce, signature):
+  valid signature from authorizer
+    AND !_authorizationStates[authorizer][nonce]
+    → _authorizationStates[authorizer][nonce] = true + emit AuthorizationCanceled
+
+  _authorizationStates[authorizer][nonce] == true → revert AuthorizationAlreadyUsed
+```
+
+---
+
+## EIP-1271 (Smart Contract Wallet) Invariants
+
+### SC1: Dual Signature Support
+
+**Invariant**: Both `permit()` and all EIP-3009 functions accept EOA signatures AND EIP-1271 smart contract wallet signatures (including multi-sig Gnosis Safes)
+
+```
+∀ signature verification:
+  signer.code.length == 0 → EOA path (ECDSA.tryRecover on the bytes signature)
+  signer.code.length > 0  → contract path (staticcall to signer.isValidSignature, forwarding full signature blob)
+```
+
+**Properties**:
+
+- Each function has two overloads: `(v, r, s)` (delegates to bytes version) and `bytes signature` (core implementation)
+- The `bytes` overload accepts arbitrary-length blobs, enabling multi-sig Gnosis Safes (threshold > 1) whose concatenated owner signatures exceed 65 bytes
+- Uses OpenZeppelin's `SignatureChecker.isValidSignatureNow()` in both `permit()` and `_verifyEIP712Signature()`
+- The `staticcall` prevents the signer contract from modifying state during verification
+- A malicious EIP-1271 contract returning `0x1626ba7e` for arbitrary hashes can only authorize transfers from its own balance — it cannot affect other users
+
+### SC2: Consistent Verification Across All Signature Paths
+
+**Invariant**: All eight signature-verified functions (4 `(v,r,s)` + 4 `bytes`) use the same verification mechanism
+
+```
+permit(v,r,s)                    → permit(bytes) → SignatureChecker.isValidSignatureNow()
+transferWithAuthorization(v,r,s) → transferWithAuthorization(bytes) → _verifyEIP712Signature() → SignatureChecker
+receiveWithAuthorization(v,r,s)  → receiveWithAuthorization(bytes) → _verifyEIP712Signature() → SignatureChecker
+cancelAuthorization(v,r,s)       → cancelAuthorization(bytes) → _verifyEIP712Signature() → SignatureChecker
+```
+
+---
+
+## EIP-712 Domain Separation Invariants
+
+### D1: Shared Domain Separator
+
+**Invariant**: EIP-2612 and EIP-3009 share a single EIP-712 domain separator but use distinct type hashes
+
+```
+DOMAIN_SEPARATOR = keccak256(
+  abi.encode(TYPE_HASH, name="Telcoin", version="1", chainId, verifyingContract)
+)
+
+PERMIT_TYPEHASH ≠ TRANSFER_WITH_AUTHORIZATION_TYPEHASH
+                ≠ RECEIVE_WITH_AUTHORIZATION_TYPEHASH
+                ≠ CANCEL_AUTHORIZATION_TYPEHASH
+```
+
+**Properties**:
+
+- A permit signature cannot be used as a `transferWithAuthorization` (different struct hash)
+- Cross-chain replay is prevented by `chainId` in the domain separator
+- Cross-deployment replay is prevented by `verifyingContract` in the domain separator
+
+### D2: Nonce System Independence
+
+**Invariant**: EIP-2612 and EIP-3009 nonce systems are completely independent
+
+```
+EIP-2612: sequential uint256 nonces in Nonces._nonces mapping
+EIP-3009: random bytes32 nonces in TelcoinV3._authorizationStates mapping
+
+No storage overlap. No type overlap. No interference.
+```
+
+---
+
 ## Audit Focus Areas
 
 ### High Priority
@@ -687,6 +893,9 @@ token != address(0) (enforced by constructor revert)
 6. Cross-chain peer configuration consistency (`TelcoinBridge` ↔ `NativeBridge` peer wiring)
 7. LayerZero V2 message delivery guarantees and retry behavior when paused
 8. `TelcoinBridge` interchangeability — correctness of revoke/authorize/setPeer sequence
+9. EIP-3009 signature verification — ensure `SignatureChecker` correctly validates both EOA and EIP-1271 signatures; verify type hash uniqueness prevents cross-function replay
+10. EIP-3009 nonce replay protection — verify nonces are consumed before external effects (`_markAuthorizationUsed` before `_transfer`)
+11. EIP-1271 `staticcall` safety — verify no state modification possible during signature verification callback
 
 ### Medium Priority
 
@@ -696,6 +905,9 @@ token != address(0) (enforced by constructor revert)
 4. `MintBurnWrapper` role stability on TelcoinV3
 5. `burn()` allowance enforcement — verify a compromised wrapper cannot drain unapproved wallets
 6. `rescueBurn()` access control — verify `BURNER_ROLE` holders cannot call it; only `DEFAULT_ADMIN_ROLE`
+7. EIP-2612 `permit()` nonce ordering — verify nonce is consumed atomically with signature validation (revert rolls back increment)
+8. EIP-3009 time window edge cases — `validAfter == validBefore`, `validBefore = 0`, `validAfter = type(uint256).max`
+9. EIP-2612/3009 interaction with pause — verify permits succeed while paused but authorized transfers revert
 
 ### Low Priority
 

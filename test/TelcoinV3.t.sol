@@ -1,37 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-import "forge-std/Test.sol";
 import {TelcoinV3} from "../src/TelcoinV3.sol";
-import {Roles} from "../src/helpers/Roles.sol";
+import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
 
-contract TelcoinV3Test is Test, Roles {
-    TelcoinV3 internal token;
-
-    address internal owner = makeAddr("owner");
-    address internal bridge = makeAddr("bridge");
-    address internal user = makeAddr("user");
-    address internal user2 = makeAddr("user2");
-    address internal attacker = makeAddr("attacker");
-
-    uint256 internal constant INITIAL_SUPPLY = 10_000_000_000 ether;
-    uint256 internal constant MINT_AMOUNT = 500 ether;
-
-    function setUp() public {
-        vm.prank(owner);
-        token = new TelcoinV3(
-            INITIAL_SUPPLY, // initialSupply_
-            owner // owner_
-        );
-
-        vm.startPrank(owner);
-        token.grantRole(MINTER_ROLE, address(bridge));
-        token.grantRole(BURNER_ROLE, address(bridge));
-        token.grantRole(PAUSER_ROLE, address(owner));
-        token.grantRole(UNPAUSER_ROLE, address(owner));
-        vm.stopPrank();
-    }
-
+/**
+ * @title TelcoinV3Test
+ * @notice Core TelcoinV3 test suite covering supply caps, minting, burning, pausability,
+ *         access control, role management, and token rescue functionality.
+ */
+contract TelcoinV3Test is TelcoinV3BaseSetup {
     // ---------------------
     // Supply Cap Tests
     // ---------------------

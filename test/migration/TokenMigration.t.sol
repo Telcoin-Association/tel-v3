@@ -87,10 +87,28 @@ contract TokenMigrationTest is Test, Roles {
     // Initial State Tests
     // -------------------
 
+    /// @dev Verifies constructor reverts when _oldToken is the zero address.
+    function test_Constructor_RevertsWhenOldTokenZero() public {
+        vm.expectRevert(TokenMigration.ZeroAddress.selector);
+        new TokenMigration(address(0), address(telcoinV3), owner, 365 days);
+    }
+
+    /// @dev Verifies constructor reverts when _telcoinV3 is the zero address.
+    function test_Constructor_RevertsWhenNewTokenZero() public {
+        vm.expectRevert(TokenMigration.ZeroAddress.selector);
+        new TokenMigration(address(oldToken), address(0), owner, 365 days);
+    }
+
     /// @dev Verifies constructor reverts when _oldToken and _telcoinV3 are the same address.
     function test_Constructor_RevertsWhenSameAddress() public {
         vm.expectRevert(TokenMigration.SameAddress.selector);
         new TokenMigration(address(telcoinV3), address(telcoinV3), owner, 365 days);
+    }
+
+    /// @dev Verifies constructor reverts when _migrationDuration is zero.
+    function test_Constructor_RevertsWhenDurationZero() public {
+        vm.expectRevert(TokenMigration.InvalidExpiry.selector);
+        new TokenMigration(address(oldToken), address(telcoinV3), owner, 0);
     }
 
     // ---------------

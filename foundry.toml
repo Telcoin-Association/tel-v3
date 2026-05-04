@@ -26,13 +26,4 @@ lint_on_build = false
 ignore = ["quotes"]
 
 [fmt]
-ignore = [
-    "src/TelcoinBridge.sol",
-    "src/MintBurnWrapper.sol",
-    "src/NativeBridge.sol",
-    "src/TelcoinV3.sol",
-    "src/TokenMigration.sol",
-    "src/legacy/Telcoin.sol",
-    "test/**",
-    "script/**"
-]
+ignore = ["src", "test", "script"]
