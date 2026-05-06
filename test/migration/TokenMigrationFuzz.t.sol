@@ -27,6 +27,8 @@ contract TokenMigrationFuzzTest is Test, Roles {
     // largest holder is Polygon bridge ~35B so set bound to 50B
     uint256 constant MAX_OLD_TOKEN_AMOUNT = 50_000_000_000 * 10 ** 2; // 50B with 2 decimals
     uint256 constant MAX_UINT256 = type(uint256).max;
+    uint256 constant MIGRATION_DURATION = 365 days;
+    uint256 constant WITHDRAWAL_DELAY = 90 days;
 
     // fork
     string ethereumRpcUrl = vm.envString("ETHEREUM_RPC_URL");
@@ -57,7 +59,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // deploy token migration contract
         bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);
@@ -80,7 +82,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         deal(address(oldToken), user, amount);
 
         // Record initial state
-        uint256 initialBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+        uint256 initialEscrowBalance = oldToken.balanceOf(address(migration));
         uint256 preSupplyV3 = telcoinV3.totalSupply();
         uint256 quote = migration.getAmountOut(amount);
 
@@ -99,8 +101,8 @@ contract TokenMigrationFuzzTest is Test, Roles {
         assertEq(oldToken.balanceOf(user), 0, "User should have no old tokens");
         assertEq(telcoinV3.balanceOf(user), expectedNewTokens, "Incorrect new token balance");
 
-        // Old tokens burned
-        assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), initialBurnBalance + amount, "Incorrect burn amount");
+        // Old tokens escrowed
+        assertEq(oldToken.balanceOf(address(migration)), initialEscrowBalance + amount, "Incorrect escrow amount");
 
         // Fresh mint: total supply increases by exactly the minted amount
         assertEq(telcoinV3.totalSupply(), preSupplyV3 + expectedNewTokens, "Total supply mismatch");
@@ -108,9 +110,6 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // Migration contract holds no TelcoinV3 (mint-based, not transfer-based)
         assertEq(telcoinV3.balanceOf(address(migration)), 0, "Migration contract should hold no TelcoinV3");
 
-        // Tracking state
-        assertEq(migration.totalOldTokenBurned(), amount, "totalOldTokenBurned mismatch");
-        assertEq(migration.totalMigrated(), expectedNewTokens, "totalMigrated mismatch");
     }
 
     /**
@@ -140,7 +139,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
             oldToken.approve(address(migration), balances[i]);
         }
 
-        uint256 initialBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+        uint256 initialEscrowBalance = oldToken.balanceOf(address(migration));
         uint256 preSupplyV3 = telcoinV3.totalSupply();
 
         uint256 totalMigratedOld;
@@ -149,7 +148,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         for (uint256 i; i < numUsers; i++) {
             uint256 amountToMigrate = balances[i];
             uint256 expectedNew = amountToMigrate * migration.DECIMAL_MULTIPLIER();
-            uint256 preBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+            uint256 preEscrowBalance = oldToken.balanceOf(address(migration));
 
             vm.prank(users[i]);
             migration.migrate();
@@ -158,21 +157,18 @@ contract TokenMigrationFuzzTest is Test, Roles {
             totalMigratedNew += expectedNew;
 
             // Per-migration invariants
-            assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), preBurnBalance + amountToMigrate, "Per-step burn mismatch");
+            assertEq(oldToken.balanceOf(address(migration)), preEscrowBalance + amountToMigrate, "Per-step escrow mismatch");
             assertEq(telcoinV3.balanceOf(users[i]), expectedNew, "User new token balance mismatch");
             assertEq(oldToken.balanceOf(users[i]), 0, "User still holds old tokens");
         }
 
         // Global invariants after all migrations
-        assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), initialBurnBalance + totalMigratedOld, "Total burned mismatch");
+        assertEq(oldToken.balanceOf(address(migration)), initialEscrowBalance + totalMigratedOld, "Total escrowed mismatch");
         assertEq(telcoinV3.totalSupply(), preSupplyV3 + totalMigratedNew, "Total supply mismatch");
 
         // Migration contract holds no TelcoinV3
         assertEq(telcoinV3.balanceOf(address(migration)), 0, "Migration contract should hold no TelcoinV3");
 
-        // Tracking state
-        assertEq(migration.totalOldTokenBurned(), totalMigratedOld, "totalOldTokenBurned mismatch");
-        assertEq(migration.totalMigrated(), totalMigratedNew, "totalMigrated mismatch");
     }
 
     /**
@@ -204,10 +200,6 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
         // Migration contract holds no TelcoinV3
         assertEq(telcoinV3.balanceOf(address(migration)), 0, "Migration contract should hold no TelcoinV3");
-
-        // Tracking state
-        assertEq(migration.totalOldTokenBurned(), testAmount, "totalOldTokenBurned mismatch");
-        assertEq(migration.totalMigrated(), expectedNewTokens, "totalMigrated mismatch");
     }
 
     /**
@@ -336,7 +328,6 @@ contract TokenMigrationFuzzTest is Test, Roles {
         address recipient = address(uint160(seed));
         vm.assume(recipient != address(0));
         vm.assume(recipient != address(migration));
-        vm.assume(recipient != migration.BURN_ADDRESS());
 
         vm.prank(owner);
         migration.recoverERC20(recipient, address(randomToken), amount);
@@ -353,7 +344,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
         uint256 initialTotalSupply = oldToken.totalSupply();
         uint256 initialNewSupply = telcoinV3.totalSupply();
-        uint256 initialBurnBalance = oldToken.balanceOf(migration.BURN_ADDRESS());
+        uint256 initialEscrowBalance = oldToken.balanceOf(address(migration));
 
         uint256 totalMigratedOld = 0;
 
@@ -377,11 +368,11 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
         uint256 totalNewDistributed = totalMigratedOld * migration.DECIMAL_MULTIPLIER();
 
-        // Invariant 1: Old token total supply unchanged (tokens moved to burn address, not destroyed)
+        // Invariant 1: Old token total supply unchanged (tokens moved to escrow, not destroyed)
         assertEq(oldToken.totalSupply(), initialTotalSupply, "Old token total supply changed");
 
-        // Invariant 2: Burn address received all migrated old tokens
-        assertEq(oldToken.balanceOf(migration.BURN_ADDRESS()), initialBurnBalance + totalMigratedOld, "Burn balance mismatch");
+        // Invariant 2: Migration contract escrowed all migrated old tokens
+        assertEq(oldToken.balanceOf(address(migration)), initialEscrowBalance + totalMigratedOld, "Escrow balance mismatch");
 
         // Invariant 3: Fresh mint — new token total supply increased by exactly the minted amount
         assertEq(telcoinV3.totalSupply(), initialNewSupply + totalNewDistributed, "New token total supply mismatch");
@@ -389,10 +380,6 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // Invariant 4: Migration contract holds no TelcoinV3 (mint-based, not transfer-based)
         assertEq(telcoinV3.balanceOf(address(migration)), 0, "Migration contract should hold no TelcoinV3");
 
-        // Invariant 5: Tracking state is consistent
-        assertEq(migration.totalOldTokenBurned(), totalMigratedOld, "totalOldTokenBurned mismatch");
-        assertEq(migration.totalMigrated(), totalNewDistributed, "totalMigrated mismatch");
-        assertEq(migration.totalOldTokenBurned() * migration.DECIMAL_MULTIPLIER(), migration.totalMigrated(), "Tracking invariant broken");
     }
 
     /**

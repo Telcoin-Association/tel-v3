@@ -99,23 +99,23 @@ contract MigrateTokens is DeployUtility {
 
         uint256 legacyBalanceAfter = legacyToken.balanceOf(_deployer);
         uint256 newBalanceAfter = newToken.balanceOf(_deployer);
-        uint256 burnAddressBalance = legacyToken.balanceOf(migration.BURN_ADDRESS());
+        uint256 escrowBalance = legacyToken.balanceOf(migrationContract);
 
         console.log("Deployer Legacy TEL Balance:", legacyBalanceAfter);
         console.log("Deployer TelcoinV3 Balance:", newBalanceAfter);
-        console.log("Burn Address Legacy TEL Balance:", burnAddressBalance);
+        console.log("Escrowed Legacy TEL Balance:", escrowBalance);
         console.log("");
 
         // Verify state changes
         console.log("=== Verification ===");
 
-        bool legacyBurned = legacyBalanceAfter == 0;
+        bool legacyEscrowed = legacyBalanceAfter == 0;
         bool newReceived = (newBalanceAfter - newBalanceBefore) == expectedNewTokens;
 
-        console.log("Legacy tokens burned correctly:", legacyBurned ? "PASS" : "FAIL");
+        console.log("Legacy tokens escrowed correctly:", legacyEscrowed ? "PASS" : "FAIL");
         console.log("New tokens received correctly:", newReceived ? "PASS" : "FAIL");
 
-        if (legacyBurned && newReceived) {
+        if (legacyEscrowed && newReceived) {
             console.log("");
             console.log("Migration successful!");
         } else {

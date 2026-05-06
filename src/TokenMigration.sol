@@ -11,24 +11,22 @@ import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 /**
  * @title TokenMigration
  * @author Telcoin Association
- * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate
+ * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate.
+ * Old tokens are escrowed in this contract during migration and can be withdrawn by the owner
+ * after a secondary withdrawal delay following migration expiry.
  */
 contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     using SafeERC20 for IERC20Mintable;
 
-    /// @dev TEL token addresses per chain
-    IERC20Mintable public immutable oldToken;
-    IERC20Mintable public immutable telcoinV3;
-    
-    /// @dev TEL disallows transfers to zero address
-    address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
-
     /// @notice Decimal difference multiplier (10^16)
     uint256 public constant DECIMAL_MULTIPLIER = 10 ** 16;
 
-    /// @notice The total amount of TEL migrated via this contract,
-    /// denominated using TelcoinV3's 18 decimals
-    uint256 public totalMigrated;
+    /// @notice The delay after migrationExpiry before escrowed old tokens can be withdrawn
+    uint256 public immutable withdrawalDelay;
+
+    /// @dev TEL token addresses per chain
+    IERC20Mintable public immutable oldToken;
+    IERC20Mintable public immutable telcoinV3;
 
     /// @notice The timestamp when migration has come to a conclusion. All attempts to migrate will
     /// revert if block.timestamp is beyond migrationExpiry.
@@ -38,6 +36,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     event TokensMigrated(address indexed user, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
     event MigrationExpirySet(uint256 oldExpiry, uint256 newExpiry);
+    event OldTokensWithdrawn(address indexed to, uint256 amount);
 
     // errors
     error InvalidAmount();
@@ -46,6 +45,8 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     error SameAddress();
     error MigrationConcluded();
     error CannotRenounceOwnership();
+    error WithdrawalLocked();
+    error CannotRecoverOldToken();
 
     /**
      * @dev Constructor
@@ -53,8 +54,15 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
      * @param _initialOwner Owner address of this contract
      * @param _migrationDuration Duration of migration in seconds
+     * @param _withdrawalDelay Duration after migrationExpiry before old tokens can be withdrawn
      */
-    constructor(address _oldToken, address _telcoinV3, address _initialOwner, uint256 _migrationDuration) Ownable(_initialOwner) {
+    constructor(
+        address _oldToken, 
+        address _telcoinV3,
+        address _initialOwner,
+        uint256 _migrationDuration,
+        uint256 _withdrawalDelay
+    ) Ownable(_initialOwner) {
         if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
         if (_oldToken == _telcoinV3) revert SameAddress();
         if (_migrationDuration == 0) revert InvalidExpiry();
@@ -63,11 +71,12 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
         telcoinV3 = IERC20Mintable(_telcoinV3);
 
         migrationExpiry = block.timestamp + _migrationDuration;
+        withdrawalDelay = _withdrawalDelay;
     }
 
     /**
      * @dev Migrate oldToken to TelcoinV3
-     * @notice Migrates entire balance and sends oldToken to BURN_ADDRESS
+     * @notice Migrates entire balance and escrows oldToken in this contract
      * @return amountNewToken Amount of tokens minted in response to migration
      */
     function migrate() external nonReentrant whenNotPaused returns (uint256 amountNewToken) {
@@ -78,14 +87,29 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
 
         // convert from 2 decimals to 18 decimals
         amountNewToken = getAmountOut(userBalance);
-        totalMigrated += amountNewToken;
 
-        // transfer oldToken from user to burn address (locked permanently)
-        oldToken.safeTransferFrom(msg.sender, BURN_ADDRESS, userBalance);
+        // transfer oldToken from user to this contract (escrowed)
+        oldToken.safeTransferFrom(msg.sender, address(this), userBalance);
 
         // mint telcoinV3 to user
         telcoinV3.mint(msg.sender, amountNewToken);
         emit TokensMigrated(msg.sender, amountNewToken);
+    }
+
+    /**
+     * @notice Withdraw all escrowed old tokens after the withdrawal delay has passed.
+     * @dev Can only be called by the owner after migrationExpiry + withdrawalDelay.
+     * @param destination The address to send the escrowed old tokens
+     */
+    function withdrawOldTokens(address destination) external onlyOwner {
+        if (destination == address(0)) revert ZeroAddress();
+        if (block.timestamp < migrationExpiry + withdrawalDelay) revert WithdrawalLocked();
+
+        uint256 balance = oldToken.balanceOf(address(this));
+        if (balance == 0) revert InvalidAmount();
+
+        oldToken.safeTransfer(destination, balance);
+        emit OldTokensWithdrawn(destination, balance);
     }
 
     /**
@@ -107,9 +131,8 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      * @param amount Amount of tokens to recover from this contract
      */
     function recoverERC20(address destination, address tokenAddress, uint256 amount) external onlyOwner {
-        if (destination == address(0) || destination == BURN_ADDRESS || tokenAddress == address(0)) {
-            revert ZeroAddress();
-        }
+        if (destination == address(0) || tokenAddress == address(0)) revert ZeroAddress();
+        if (tokenAddress == address(oldToken)) revert CannotRecoverOldToken();
 
         // check balance
         IERC20Mintable tokenContract = IERC20Mintable(tokenAddress);
@@ -150,14 +173,5 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      */
     function getAmountOut(uint256 amountIn) public pure returns (uint256) {
         return amountIn * DECIMAL_MULTIPLIER;
-    }
-
-    /**
-     * @notice Returns the total amount of old TEL burned via this contract, denominated in the
-     *         old token's 2 decimals.
-     * @dev Derived from totalMigrated — always exact since DECIMAL_MULTIPLIER divides evenly.
-     */
-    function totalOldTokenBurned() external view returns (uint256) {
-        return totalMigrated / DECIMAL_MULTIPLIER;
     }
 }
