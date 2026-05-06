@@ -29,6 +29,8 @@ contract TokenMigrationTest is Test, Roles {
     uint256 constant OLDTOKEN_SUPPLY = 100_000_000_000 * 10 ** 2; // 100B with 2 decimals
     uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 10_000_000_000 * 10 ** 18; // 10B with 18 decimals
     uint256 constant INITIAL_USER_BAL = 1_000_000 * 10 ** 2;
+    uint256 constant MIGRATION_DURATION = 365 days;
+    uint256 constant WITHDRAWAL_DELAY = 90 days;
 
     // fork
     string ethereumRpcUrl = vm.envString("ETHEREUM_RPC_URL");
@@ -67,7 +69,7 @@ contract TokenMigrationTest is Test, Roles {
         // deploy token migration contract
         bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days, 90 days)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);
@@ -90,25 +92,25 @@ contract TokenMigrationTest is Test, Roles {
     /// @dev Verifies constructor reverts when _oldToken is the zero address.
     function test_Constructor_RevertsWhenOldTokenZero() public {
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
-        new TokenMigration(address(0), address(telcoinV3), owner, 365 days, 90 days);
+        new TokenMigration(address(0), address(telcoinV3), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY);
     }
 
     /// @dev Verifies constructor reverts when _telcoinV3 is the zero address.
     function test_Constructor_RevertsWhenNewTokenZero() public {
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
-        new TokenMigration(address(oldToken), address(0), owner, 365 days, 90 days);
+        new TokenMigration(address(oldToken), address(0), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY);
     }
 
     /// @dev Verifies constructor reverts when _oldToken and _telcoinV3 are the same address.
     function test_Constructor_RevertsWhenSameAddress() public {
         vm.expectRevert(TokenMigration.SameAddress.selector);
-        new TokenMigration(address(telcoinV3), address(telcoinV3), owner, 365 days, 90 days);
+        new TokenMigration(address(telcoinV3), address(telcoinV3), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY);
     }
 
     /// @dev Verifies constructor reverts when _migrationDuration is zero.
     function test_Constructor_RevertsWhenDurationZero() public {
         vm.expectRevert(TokenMigration.InvalidExpiry.selector);
-        new TokenMigration(address(oldToken), address(telcoinV3), owner, 0, 90 days);
+        new TokenMigration(address(oldToken), address(telcoinV3), owner, 0, WITHDRAWAL_DELAY);
     }
 
     // ---------------

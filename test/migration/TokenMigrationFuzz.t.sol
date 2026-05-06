@@ -27,6 +27,8 @@ contract TokenMigrationFuzzTest is Test, Roles {
     // largest holder is Polygon bridge ~35B so set bound to 50B
     uint256 constant MAX_OLD_TOKEN_AMOUNT = 50_000_000_000 * 10 ** 2; // 50B with 2 decimals
     uint256 constant MAX_UINT256 = type(uint256).max;
+    uint256 constant MIGRATION_DURATION = 365 days;
+    uint256 constant WITHDRAWAL_DELAY = 90 days;
 
     // fork
     string ethereumRpcUrl = vm.envString("ETHEREUM_RPC_URL");
@@ -57,7 +59,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // deploy token migration contract
         bytes32 migrationSalt = keccak256("TOKEN_MIGRATION_SALT");
         bytes memory migrationArgs = abi.encodePacked(
-            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, 365 days, 90 days)
+            type(TokenMigration).creationCode, abi.encode(address(oldToken), address(telcoinV3), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY)
         );
         address migrationAddress = create3.deploy(migrationSalt, migrationArgs);
         migration = TokenMigration(migrationAddress);
