@@ -16,12 +16,12 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
  * between a stablecoin and its backing asset to maintain peg stability via arbitrage.
  *
  * This contract has been adapted for Phase 2 of the TEL v2 -> TEL v3 token migration:
- *   - Phase 1: TokenMigration contract provides a 1-2 year window for 1:1 migration via minting.
+ *   - Phase 1: TokenMigration contract provides a temporary window for 1:1 migration via minting.
  *   - Phase 2: Remaining TEL v3 supply is minted to this vault. Any remaining TEL v2 holders
- *     can swap their tokens here at 1:1 value, depleting the TEL v3 balance.
+ *     can swap their tokens here at 1:1 value, depleting the remaining TEL v3 balance.
  *
  * Modifications from the original PSV:
- *   - Swap direction is one-way only (OLD -> NEW). Reverse swaps are not permitted.
+ *   - Swap direction is one-way only (OLD -> NEW).
  *   - Fee system removed (all swaps are fee-free).
  *   - Rate limiting removed.
  *   - Whitelist removed.
@@ -36,12 +36,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
  *   - All internal calculations are normalized to 18 decimals (WAD)
  *   - Supports tokens with up to 18 decimals
  *   - Conversion factors are computed at initialization
- *
- * Roles:
- *   - DEFAULT_ADMIN_ROLE: Can manage roles and upgrade contract
- *   - TREASURY_ROLE: Can withdraw tokens
- *   - PAUSER_ROLE: Can pause core functionality
- *   - UNPAUSER_ROLE: Can unpause core functionality
  */
 contract MigrationVault is
     AccessControlUpgradeable,
@@ -160,9 +154,9 @@ contract MigrationVault is
         NEW_TOKEN = IERC20Metadata(_newToken);
     }
 
-    // --------
+    // -------
     // Migrate
-    // --------
+    // -------
 
     /**
      * @notice Swap OLD tokens for NEW tokens at 1:1 value rate
