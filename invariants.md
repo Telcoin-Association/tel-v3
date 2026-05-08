@@ -7,6 +7,10 @@
 This document defines the invariants and security properties for the TEL token migration system, facilitating the upgrade from TEL v2 (2 decimals) to TEL v3 (18 decimals) across Ethereum, Polygon, and Base chains.
 The migration maintains a 1:1 value ratio while adjusting for decimal precision differences.
 
+The system operates in two phases:
+- **Phase 1 (TokenMigration)**: A time-bounded, mint-based migration window (1–2 years) where any TEL v2 holder can migrate their full balance. TEL v3 is minted on demand.
+- **Phase 2 (MigrationVault)**: After Phase 1 closes, the remaining unminted TEL v3 supply is deposited into a one-way reserve-based vault. Late TEL v2 holders swap at 1:1 value until the vault's TEL v3 reserves are depleted.
+
 ---
 
 ## System Overview
@@ -15,8 +19,9 @@ The migration maintains a 1:1 value ratio while adjusting for decimal precision 
 
 1. **OldToken (TEL v2)**: Existing ERC20 token with 2 decimal places
 2. **NewToken (TEL v3)**: New ERC20 token with 18 decimal places
-3. **TokenMigration Contract**: Facilitates the swap at a 1:1 ratio with decimal adjustment
-4. **Governance Multisig**: Controls migration parameters and recovery functions
+3. **TokenMigration Contract (Phase 1)**: Mint-based 1:1 migration with time-bounded window
+4. **MigrationVault Contract (Phase 2)**: Reserve-based one-way vault for long-tail migration after Phase 1 closes
+5. **Governance Multisig**: Controls migration parameters, vault roles, and recovery functions
 
 ### Deployment Strategy
 
@@ -502,23 +507,170 @@ owner after the withdrawal delay.
 
 ### Known Limitations & Design Decisions
 
-1. **Whole Balance Migration**: Users must migrate entire balance at once (intentional design)
-2. **Migration Window Risk**: Users who do not migrate within timeframe will lose access to their tokens (intentional incentive mechanism)
-3. **Irreversibility**: No mechanism for users to reverse migrations once completed
+1. **Whole Balance Migration (Phase 1)**: Users must migrate entire balance at once (intentional design)
+2. **Migration Window Risk**: Users who do not migrate during Phase 1 must use the Phase 2 MigrationVault, which is subject to reserve availability
+3. **Irreversibility**: No mechanism for users to reverse migrations once completed (both phases)
 4. **Gas Costs**: Users bear gas costs for migration transaction
-5. **Escrow Model**: OldToken is held in the migration contract (not burned) to allow governance to reclaim legacy liquidity pool positions after the withdrawal delay
-6. **Supply Distribution**: Slight variations possible between chains, users may need to bridge to chains with remaining liquidity
+5. **Escrow Model (Phase 1)**: OldToken is held in the migration contract (not burned) to allow governance to reclaim legacy liquidity pool positions after the withdrawal delay
+6. **Reserve Depletion (Phase 2)**: The MigrationVault has a finite TEL v3 reserve. Once depleted, no further migrations are possible. Treasury can also withdraw reserves, effectively ending Phase 2
+7. **Supply Distribution**: Slight variations possible between chains, users may need to bridge to chains with remaining liquidity
+8. **One-Way Only (Phase 2)**: MigrationVault intentionally removes the reverse swap direction from the original PSV design. TEL v3 holders cannot swap back to TEL v2
 
 ### Mitigation Strategies
 
 1. **Clear Documentation**: Comprehensive user guides and warnings
-2. **Role Management**: Ensure migration contract holds `MINTER_ROLE` on TelcoinV3 before launch; revoke post-expiry
-3. **Monitoring**: Real-time tracking of migration progress via `oldToken.balanceOf(migrationContract)` and the `TokensMigrated` event
-4. **Grace Period**: Consider extension mechanisms if needed
+2. **Role Management**: Ensure migration contract holds `MINTER_ROLE` on TelcoinV3 before Phase 1 launch; revoke post-expiry. Ensure MigrationVault is pre-funded with remaining TEL v3 for Phase 2
+3. **Monitoring**: Real-time tracking of migration progress via `oldToken.balanceOf(migrationContract)` and the `TokensMigrated` event (Phase 1); `vault.getReserves()` and `Migrated` events (Phase 2)
+4. **Grace Period**: Phase 2 MigrationVault provides an indefinite fallback for late migrators (subject to reserve availability)
 5. **Support Channels**: Dedicated assistance for migration issues
-6. **Recovery Mechanism**: Governance can recover accidentally sent non-legacy tokens; legacy tokens are protected by the withdrawal delay
-7. **Legacy Liquidity Recovery**: After `migrationExpiry + withdrawalDelay`, governance can withdraw escrowed legacy tokens to reclaim liquidity from constant product pools
-8. **Extended Claims**: Governance may extend `migrationExpiry` before deadline or grant `MINTER_ROLE` to a new migration contract to support a late-claims period
+6. **Recovery Mechanism**: Governance can recover accidentally sent non-legacy tokens (Phase 1); `TREASURY_ROLE` can withdraw any token from MigrationVault (Phase 2)
+7. **Legacy Liquidity Recovery**: After `migrationExpiry + withdrawalDelay`, governance can withdraw escrowed legacy tokens to reclaim liquidity from constant product pools (Phase 1). `TREASURY_ROLE` can withdraw accumulated TEL v2 from MigrationVault for the same purpose (Phase 2)
+8. **Extended Claims**: Governance may extend `migrationExpiry` before deadline or deploy Phase 2 MigrationVault to support a long-tail claims period
+
+---
+
+---
+
+## Phase 2: MigrationVault Invariants
+
+The MigrationVault is a one-way reserve-based swap contract deployed for long-tail migration after the Phase 1 `TokenMigration` window closes. It holds a pre-funded TEL v3 balance and allows TEL v2 holders to swap at a 1:1 value rate.
+
+### MV1: One-Way Migration
+
+**Invariant**: The vault only supports OLD → NEW token swaps; no reverse direction exists
+
+```
+∀ interaction with MigrationVault:
+  only migrate(recipient, amountIn) transfers OLD in and NEW out
+  no function exists to swap NEW → OLD
+```
+
+**Properties**:
+
+- Unlike the original PSV design, `buyGem` (reverse swap) has been removed entirely
+- The vault has no mechanism to return NEW tokens in exchange for OLD tokens
+- This ensures TEL v3 cannot flow back to TEL v2
+
+### MV2: 1:1 Value Conservation
+
+**Invariant**: Every migration preserves exact 1:1 value when normalized to WAD (18 decimals)
+
+```
+∀ migrate(recipient, amountIn):
+  amountOut = (amountIn * oldToWad) / newToWad
+  amountIn * oldToWad == amountOut * newToWad
+```
+
+**Properties**:
+
+- No fees are charged (fee system removed from original PSV)
+- No slippage or spread
+- Conversion is exact for the TEL v2 (2 dec) → TEL v3 (18 dec) pair: `amountOut = amountIn * 10^16`
+- For token pairs where OLD has more decimals than NEW, truncation may occur (amountOut can round to 0 for dust amounts; reverts with `ZeroAmount`)
+
+### MV3: Reserve-Based (Not Mint-Based)
+
+**Invariant**: The vault transfers NEW tokens from its own balance; it does not mint
+
+```
+∀ migrate(recipient, amountIn):
+  pre: NEW_TOKEN.balanceOf(vault) >= amountOut
+  post: NEW_TOKEN.balanceOf(vault) = pre.NEW_TOKEN.balanceOf(vault) - amountOut
+  NEW_TOKEN.balanceOf(vault) < amountOut → revert InsufficientReserves
+```
+
+**Properties**:
+
+- The vault must be pre-funded with TEL v3 before migrations can occur
+- Unlike Phase 1's TokenMigration, no `MINTER_ROLE` is required
+- Once reserves are depleted, all subsequent migrations revert
+- Treasury can withdraw reserves via `withdraw()`, effectively ending migrations
+
+### MV4: Vault Accounting Conservation
+
+**Invariant**: The sum of OLD tokens received and NEW tokens disbursed by the vault is always consistent
+
+```
+∀ time t:
+  OLD_TOKEN.balanceOf(vault, t) == Σ(amountIn for all migrations up to t) - Σ(OLD withdrawals)
+  NEW_TOKEN.balanceOf(vault, t) == initialReserve - Σ(amountOut for all migrations up to t) - Σ(NEW withdrawals)
+```
+
+**Properties**:
+
+- OLD tokens accumulate in the vault as users migrate
+- NEW tokens deplete from the vault as users migrate
+- Treasury withdrawals are the only other mechanism that changes vault balances
+- No tokens are burned or minted by the vault
+
+### MV5: Access Control
+
+**Invariant**: Only authorized roles can perform privileged operations
+
+```
+onlyRole(DEFAULT_ADMIN_ROLE):
+  - upgradeToAndCall()    ← UUPS upgrade
+  - grantRole() / revokeRole()
+
+onlyRole(TREASURY_ROLE):
+  - withdraw(token, to, amount)
+
+onlyRole(PAUSER_ROLE):
+  - pause()
+
+onlyRole(UNPAUSER_ROLE):
+  - unpause()
+
+No role required:
+  - migrate(recipient, amountIn)   ← whenNotPaused, nonReentrant
+  - previewMigrate(amountIn)       ← view
+  - getReserves()                  ← view
+  - getDecimals()                  ← view
+```
+
+### MV6: Pausability
+
+**Invariant**: When paused, no migrations can occur; treasury withdrawals remain accessible
+
+```
+paused == true → migrate() reverts with EnforcedPause
+paused == true → withdraw() still callable by TREASURY_ROLE
+```
+
+**Properties**:
+
+- Allows governance to halt migrations in an emergency while preserving the ability to manage reserves
+- View functions (`previewMigrate`, `getReserves`, `getDecimals`) remain accessible when paused
+
+### MV7: Upgradeability Safety
+
+**Invariant**: Only `DEFAULT_ADMIN_ROLE` can upgrade the implementation; state is preserved across upgrades
+
+```
+∀ upgradeToAndCall(newImpl, data):
+  caller lacks DEFAULT_ADMIN_ROLE → revert AccessControlUnauthorizedAccount
+  caller has DEFAULT_ADMIN_ROLE → implementation replaced, proxy storage preserved
+```
+
+**Properties**:
+
+- UUPS pattern: upgrade logic lives in the implementation, not the proxy
+- `_disableInitializers()` in the constructor prevents initialization of the bare implementation
+- Proxy storage (token addresses, conversion factors, roles) is preserved across upgrades
+
+### MV8: Reentrancy Protection
+
+**Invariant**: `migrate()` and `withdraw()` are protected against reentrancy
+
+```
+∀ reentrant call to migrate() or withdraw():
+  revert (transient storage reentrancy guard)
+```
+
+**Properties**:
+
+- Uses OpenZeppelin `ReentrancyGuardTransient` (EIP-1153 transient storage)
+- Prevents cross-function reentrancy between `migrate` and `withdraw`
 
 ---
 
@@ -920,10 +1072,13 @@ No storage overlap. No type overlap. No interference.
 9. EIP-3009 signature verification — ensure `SignatureChecker` correctly validates both EOA and EIP-1271 signatures; verify type hash uniqueness prevents cross-function replay
 10. EIP-3009 nonce replay protection — verify nonces are consumed before external effects (`_markAuthorizationUsed` before `_transfer`)
 11. EIP-1271 `staticcall` safety — verify no state modification possible during signature verification callback
+12. `MigrationVault` one-way enforcement — verify no code path allows NEW → OLD swaps
+13. `MigrationVault` decimal conversion — verify WAD-normalized 1:1 value conservation for the 2→18 decimal pair; verify dust amounts revert with `ZeroAmount`
+14. `MigrationVault` UUPS upgrade safety — verify `_authorizeUpgrade` is properly gated and `_disableInitializers` prevents implementation initialization
 
 ### Medium Priority
 
-1. Event emission completeness and accuracy (`OFTSent`, `OFTReceived`, `BridgeAuthorized`, `BridgeRevoked`, `BridgeMinted`, `BridgeBurned`, `ReserveFunded`)
+1. Event emission completeness and accuracy (`OFTSent`, `OFTReceived`, `BridgeAuthorized`, `BridgeRevoked`, `BridgeMinted`, `BridgeBurned`, `ReserveFunded`, `Migrated`, `Withdrawn`)
 2. Pause mechanism effectiveness on both send and receive paths
 3. `NativeBridge` single-instance constraint enforcement
 4. `MintBurnWrapper` role stability on TelcoinV3
@@ -932,6 +1087,9 @@ No storage overlap. No type overlap. No interference.
 7. EIP-2612 `permit()` nonce ordering — verify nonce is consumed atomically with signature validation (revert rolls back increment)
 8. EIP-3009 time window edge cases — `validAfter == validBefore`, `validBefore = 0`, `validAfter = type(uint256).max`
 9. EIP-2612/3009 interaction with pause — verify permits succeed while paused but authorized transfers revert
+10. `MigrationVault` reserve depletion — verify `InsufficientReserves` is correctly enforced; verify `TREASURY_ROLE` withdrawal does not bypass reserve checks for migrate
+11. `MigrationVault` `AccessControlUpgradeable` role management — verify role admin hierarchy and that non-admins cannot escalate privileges
+12. `MigrationVault` pause/unpause — verify `migrate()` reverts when paused but `withdraw()` remains accessible to `TREASURY_ROLE`
 
 ### Low Priority
 
