@@ -357,8 +357,8 @@ contract MigrationVaultFuzzTest is Test, Roles {
         assertEq(newToken.balanceOf(address(vault)), preVaultNew - totalNewDistributed, "Vault new balance mismatch");
 
         // Invariant 3: 1:1 value conservation (WAD-normalized)
-        uint256 oldValueWad = totalMigratedOld * vault.oldToWad();
-        uint256 newValueWad = totalNewDistributed * vault.newToWad();
+        uint256 oldValueWad = totalMigratedOld * vault.OLD_TO_WAD();
+        uint256 newValueWad = totalNewDistributed * vault.NEW_TO_WAD();
         assertEq(oldValueWad, newValueWad, "WAD value conservation violated");
     }
 

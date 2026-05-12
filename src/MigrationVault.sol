@@ -69,9 +69,9 @@ contract MigrationVault is
     /// @notice The new token to migrate to (e.g., TEL v3)
     IERC20Metadata public immutable NEW_TOKEN;
     /// @notice Factor to convert OLD_TOKEN amounts to WAD (10^(18 - oldDecimals))
-    uint256 public immutable oldToWad;
+    uint256 public immutable OLD_TO_WAD;
     /// @notice Factor to convert NEW_TOKEN amounts to WAD (10^(18 - newDecimals))
-    uint256 public immutable newToWad;
+    uint256 public immutable NEW_TO_WAD;
 
     // ------
     // Events
@@ -118,8 +118,8 @@ contract MigrationVault is
 
         OLD_TOKEN = IERC20Metadata(_oldToken);
         NEW_TOKEN = IERC20Metadata(_newToken);
-        oldToWad = 10 ** (MAX_DECIMALS - oldDecimals);
-        newToWad = 10 ** (MAX_DECIMALS - newDecimals);
+        OLD_TO_WAD = 10 ** (MAX_DECIMALS - oldDecimals);
+        NEW_TO_WAD = 10 ** (MAX_DECIMALS - newDecimals);
 
         _disableInitializers();
     }
@@ -254,8 +254,8 @@ contract MigrationVault is
      */
     function _calculateMigration(uint256 amountIn) internal view returns (uint256 amountOut) {
         // Convert input to WAD, then to output decimals (1:1 value conversion)
-        uint256 amountInWad = amountIn * oldToWad;
-        amountOut = amountInWad / newToWad;
+        uint256 amountInWad = amountIn * OLD_TO_WAD;
+        amountOut = amountInWad / NEW_TO_WAD;
     }
 
     /**

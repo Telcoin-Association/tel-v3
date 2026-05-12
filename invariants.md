@@ -557,8 +557,8 @@ The MigrationVault is a one-way reserve-based swap contract deployed for long-ta
 
 ```
 ∀ migrate(recipient, amountIn):
-  amountOut = (amountIn * oldToWad) / newToWad
-  amountIn * oldToWad == amountOut * newToWad
+  amountOut = (amountIn * OLD_TO_WAD) / NEW_TO_WAD
+  amountIn * OLD_TO_WAD == amountOut * NEW_TO_WAD
 ```
 
 **Properties**:
@@ -657,7 +657,7 @@ paused == true → withdraw() still callable by TREASURY_ROLE
 - UUPS pattern: upgrade logic lives in the implementation, not the proxy
 - `_disableInitializers()` in the constructor prevents initialization of the bare implementation
 - Proxy storage (roles, pause state) is preserved across upgrades
-- Token addresses (`OLD_TOKEN`, `NEW_TOKEN`) and conversion factors (`oldToWad`, `newToWad`) are `immutable` — baked into the implementation's bytecode at construction time, not stored in proxy storage. When deploying a new implementation for an upgrade, the same token addresses must be passed to the constructor to preserve identical behavior
+- Token addresses (`OLD_TOKEN`, `NEW_TOKEN`) and conversion factors (`OLD_TO_WAD`, `NEW_TO_WAD`) are `immutable` — baked into the implementation's bytecode at construction time, not stored in proxy storage. When deploying a new implementation for an upgrade, the same token addresses must be passed to the constructor to preserve identical behavior
 
 ### MV8: Reentrancy Protection
 

@@ -112,8 +112,8 @@ contract MigrationVaultTest is Test, Roles {
     function test_initialize_setsState() public view {
         assertEq(address(vault.OLD_TOKEN()), address(oldToken));
         assertEq(address(vault.NEW_TOKEN()), address(newToken));
-        assertEq(vault.oldToWad(), 10 ** (18 - OLD_DECIMALS));
-        assertEq(vault.newToWad(), 10 ** (18 - NEW_DECIMALS));
+        assertEq(vault.OLD_TO_WAD(), 10 ** (18 - OLD_DECIMALS));
+        assertEq(vault.NEW_TO_WAD(), 10 ** (18 - NEW_DECIMALS));
     }
 
     /// @dev Verifies all four roles are granted to the correct addresses during initialization.
@@ -584,8 +584,8 @@ contract MigrationVaultTest is Test, Roles {
         uint256 amountOut = vault.previewMigrate(amountIn);
 
         // Value in WAD should be equal (1:1 conversion)
-        uint256 valueInWad = amountIn * vault.oldToWad();
-        uint256 valueOutWad = amountOut * vault.newToWad();
+        uint256 valueInWad = amountIn * vault.OLD_TO_WAD();
+        uint256 valueOutWad = amountOut * vault.NEW_TO_WAD();
         assertEq(valueInWad, valueOutWad);
     }
 
