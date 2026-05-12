@@ -2,7 +2,10 @@
 
 ## Overview
 
-This project implements a migration system from OldToken (2 decimals) to Telcoin V3 (18 decimals) tokens at a 1:1 exchange rate using CREATE3 for deterministic deployment.
+This project implements a two-phase migration system from OldToken (TEL v2, 2 decimals) to Telcoin V3 (18 decimals) at a 1:1 exchange rate.
+
+- **Phase 1 (TokenMigration)**: A 1–2 year migration window where all holders can migrate their full TEL v2 balance via a mint-based contract. Uses CREATE3 for deterministic deployment.
+- **Phase 2 (MigrationVault)**: After Phase 1 closes, the remaining unminted TEL v3 supply is deposited into a one-way MigrationVault. Late TEL v2 holders can swap at 1:1 value until the vault's reserves are depleted.
 
 ## Cross-Chain Architecture
 
@@ -43,7 +46,7 @@ graph LR
 - **EIP-1271 smart contract wallet support**: all signature-verified functions provide both `(v, r, s)` overloads (EIP-2612/3009 standard) and `bytes signature` overloads for full EIP-1271 compatibility. The `(v, r, s)` versions delegate to the `bytes` versions internally. The `bytes` overloads accept arbitrary-length signature blobs (e.g. Gnosis Safe multi-sig concatenated signatures, ERC-4337 account signatures) and forward them to `SignatureChecker`, which routes to `ECDSA.recover` for EOAs or `IERC1271.isValidSignature` for contract wallets
 - **Independent nonce systems**: EIP-2612 uses sequential `uint256` nonces (via OZ `Nonces`); EIP-3009 uses random `bytes32` nonces tracked in a separate mapping — no interference between the two
 
-### Migration Contract
+### Migration Contract (Phase 1 — TokenMigration)
 
 - **1:1 exchange rate** with automatic decimal conversion (2 → 18)
 - **Mint-based**: mints TelcoinV3 directly; does not hold a pre-funded token reserve
@@ -58,6 +61,28 @@ graph LR
   - Extend migration expiry via `setMigrationExpiry()`
   - Withdraw escrowed legacy tokens via `withdrawOldTokens(destination)` (after withdrawal delay)
   - Recover accidentally sent tokens (excluding legacy token) via `recoverERC20(destination, tokenAddress, amount)`
+
+### MigrationVault (Phase 2 — Long-Tail Migration)
+
+After the Phase 1 migration window closes, the remaining unminted TEL v3 supply is minted to the MigrationVault (deployed with TEL v2 / TEL v3 pair). Any remaining TEL v2 holders can swap their tokens at a 1:1 value rate, depleting the vault's TEL v3 balance.
+
+Originally designed as a Peg Stability Vault (PSV) for bi-directional stablecoin swaps, the contract has been adapted for one-way migration:
+
+- **One-way only**: TEL v2 → TEL v3 swaps only; reverse direction is not permitted
+- **1:1 value rate** with WAD-normalized decimal conversion (2 → 18 decimals)
+- **Reserve-based**: holds a pre-funded TEL v3 balance; does not mint on demand
+- **Fee-free**: no swap fees (original PSV fee system removed)
+- **No rate limiting**: original per-transaction and per-block caps removed
+- **UUPS upgradeable**: proxy-based deployment with admin-controlled upgrades
+- **Pausable**: `PAUSER_ROLE` / `UNPAUSER_ROLE` for emergency situations
+- **Treasury withdrawal**: `TREASURY_ROLE` can withdraw tokens from the vault (e.g., to sell off legacy liquidity from constant product pools)
+- **Reentrancy protected** via transient storage guard
+- **Access controlled** via OpenZeppelin `AccessControlUpgradeable`
+- **Roles:**
+  - `DEFAULT_ADMIN_ROLE`: manage roles, upgrade contract
+  - `TREASURY_ROLE`: withdraw tokens
+  - `PAUSER_ROLE`: pause migration operations
+  - `UNPAUSER_ROLE`: unpause migration operations
 
 ### TelcoinBridge (Satellite Chains)
 
