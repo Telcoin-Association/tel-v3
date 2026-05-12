@@ -656,7 +656,8 @@ paused == true → withdraw() still callable by TREASURY_ROLE
 
 - UUPS pattern: upgrade logic lives in the implementation, not the proxy
 - `_disableInitializers()` in the constructor prevents initialization of the bare implementation
-- Proxy storage (token addresses, conversion factors, roles) is preserved across upgrades
+- Proxy storage (roles, pause state) is preserved across upgrades
+- Token addresses (`OLD_TOKEN`, `NEW_TOKEN`) and conversion factors (`oldToWad`, `newToWad`) are `immutable` — baked into the implementation's bytecode at construction time, not stored in proxy storage. When deploying a new implementation for an upgrade, the same token addresses must be passed to the constructor to preserve identical behavior
 
 ### MV8: Reentrancy Protection
 

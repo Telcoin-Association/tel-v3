@@ -52,10 +52,10 @@ contract MigrationVaultFuzzTest is Test, Roles {
         newToken = new TelcoinV3(0, admin);
 
         // Deploy MigrationVault behind UUPS proxy
-        MigrationVault implementation = new MigrationVault();
+        MigrationVault implementation = new MigrationVault(address(oldToken), address(newToken));
         bytes memory initData = abi.encodeCall(
             MigrationVault.initialize,
-            (address(oldToken), address(newToken), admin, pauser, unpauser)
+            (admin, pauser, unpauser)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         vault = MigrationVault(address(proxy));
@@ -160,7 +160,7 @@ contract MigrationVaultFuzzTest is Test, Roles {
         vm.assume(seed != 0);
 
         // Use a smaller vault so we can deplete it
-        MigrationVault implementation = new MigrationVault();
+        MigrationVault implementation = new MigrationVault(address(oldToken), address(newToken));
         MigrationVault smallVault;
         {
             uint256 smallReserve = 1_000 ether; // 1,000 TEL v3
@@ -169,7 +169,7 @@ contract MigrationVaultFuzzTest is Test, Roles {
 
             bytes memory initData = abi.encodeCall(
                 MigrationVault.initialize,
-                (address(oldToken), address(newToken), admin, pauser, unpauser)
+                (admin, pauser, unpauser)
             );
             ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
             smallVault = MigrationVault(address(proxy));

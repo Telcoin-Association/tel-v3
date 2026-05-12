@@ -35,7 +35,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
  * Decimal Handling:
  *   - All internal calculations are normalized to 18 decimals (WAD)
  *   - Supports tokens with up to 18 decimals
- *   - Conversion factors are computed at initialization
+ *   - Conversion factors are computed at construction time
  */
 contract MigrationVault is
     AccessControlUpgradeable,
@@ -60,18 +60,18 @@ contract MigrationVault is
     /// @notice Role for unpausing contract's core functionality
     bytes32 public constant UNPAUSER_ROLE = keccak256("UNPAUSER_ROLE");
 
-    // ---------------
-    // State Variables
-    // ---------------
+    // ----------
+    // Immutables
+    // ----------
 
     /// @notice The old token to migrate from (e.g., TEL v2)
-    IERC20Metadata public OLD_TOKEN;
+    IERC20Metadata public immutable OLD_TOKEN;
     /// @notice The new token to migrate to (e.g., TEL v3)
-    IERC20Metadata public NEW_TOKEN;
+    IERC20Metadata public immutable NEW_TOKEN;
     /// @notice Factor to convert OLD_TOKEN amounts to WAD (10^(18 - oldDecimals))
-    uint256 public oldToWad;
+    uint256 public immutable oldToWad;
     /// @notice Factor to convert NEW_TOKEN amounts to WAD (10^(18 - newDecimals))
-    uint256 public newToWad;
+    uint256 public immutable newToWad;
 
     // ------
     // Events
@@ -96,62 +96,53 @@ contract MigrationVault is
     error InsufficientReserves();
     error DecimalsExceedMax();
 
-    // -----------
-    // Initializer
-    // -----------
+    // ------------------
+    // Constructor / Init
+    // ------------------
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    /**
+     * @notice Sets immutable token configuration. Called once per implementation deployment.
+     * @dev When deploying a new implementation for an upgrade, pass the same token addresses
+     *      to preserve identical bytecode-embedded values across the proxy's lifetime.
+     * @param _oldToken Address of the old token (e.g., TEL v2)
+     * @param _newToken Address of the new token (e.g., TEL v3)
+     */
+    /// @custom:oz-upgrades-unsafe-allow constructor state-variable-immutable
+    constructor(address _oldToken, address _newToken) {
+        if (_oldToken == address(0) || _newToken == address(0)) revert ZeroAddress();
+
+        uint8 oldDecimals = IERC20Metadata(_oldToken).decimals();
+        uint8 newDecimals = IERC20Metadata(_newToken).decimals();
+
+        if (oldDecimals > MAX_DECIMALS || newDecimals > MAX_DECIMALS) revert DecimalsExceedMax();
+
+        OLD_TOKEN = IERC20Metadata(_oldToken);
+        NEW_TOKEN = IERC20Metadata(_newToken);
+        oldToWad = 10 ** (MAX_DECIMALS - oldDecimals);
+        newToWad = 10 ** (MAX_DECIMALS - newDecimals);
+
         _disableInitializers();
     }
 
     /**
-     * @notice Initializes the MigrationVault contract
-     * @param _oldToken Address of the old token (e.g., TEL v2)
-     * @param _newToken Address of the new token (e.g., TEL v3)
+     * @notice Initializes access control roles for the proxy.
      * @param _admin Address of the contract admin (receives DEFAULT_ADMIN_ROLE)
      * @param _pauser Permissioned address in charge of contract pausability
      * @param _unpauser Permissioned address in charge of unpausing contract
      */
     function initialize(
-        address _oldToken,
-        address _newToken,
         address _admin,
         address _pauser,
         address _unpauser
     ) external initializer {
-        if (
-            _oldToken == address(0) ||
-            _newToken == address(0) ||
-            _admin == address(0) ||
-            _pauser == address(0) ||
-            _unpauser == address(0)
-        ) {
-            revert ZeroAddress();
-        }
+        if (_admin == address(0) || _pauser == address(0) || _unpauser == address(0)) revert ZeroAddress();
 
         __AccessControl_init();
         __Pausable_init();
 
-        // Get decimals and validate
-        uint8 oldDecimals = IERC20Metadata(_oldToken).decimals();
-        uint8 newDecimals = IERC20Metadata(_newToken).decimals();
-
-        if (oldDecimals > MAX_DECIMALS || newDecimals > MAX_DECIMALS) {
-            revert DecimalsExceedMax();
-        }
-
-        // Calculate conversion factors to normalize to 18 decimals
-        oldToWad = 10 ** (MAX_DECIMALS - oldDecimals);
-        newToWad = 10 ** (MAX_DECIMALS - newDecimals);
-
-        // Grant roles
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(PAUSER_ROLE, _pauser);
         _grantRole(UNPAUSER_ROLE, _unpauser);
-
-        OLD_TOKEN = IERC20Metadata(_oldToken);
-        NEW_TOKEN = IERC20Metadata(_newToken);
     }
 
     // -------

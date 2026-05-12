@@ -68,10 +68,10 @@ contract MigrationVaultTest is Test, Roles {
         assertEq(newToken.decimals(), NEW_DECIMALS);
 
         // Deploy MigrationVault implementation and proxy
-        implementation = new MigrationVault();
+        implementation = new MigrationVault(address(oldToken), address(newToken));
         bytes memory initData = abi.encodeCall(
             MigrationVault.initialize,
-            (address(oldToken), address(newToken), admin, pauser, unpauser)
+            (admin, pauser, unpauser)
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         vault = MigrationVault(address(proxy));
@@ -127,74 +127,62 @@ contract MigrationVaultTest is Test, Roles {
     /// @dev Verifies the proxy cannot be reinitialized after the first initialization.
     function test_initialize_cannotReinitialize() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        vault.initialize(address(oldToken), address(newToken), admin, pauser, unpauser);
+        vault.initialize(admin, pauser, unpauser);
     }
 
-    /// @dev Verifies initialization reverts when _oldToken is the zero address.
+    /// @dev Verifies the constructor reverts when _oldToken is the zero address.
     function test_initialize_revertsZeroOldToken() public {
-        MigrationVault impl = new MigrationVault();
         vm.expectRevert(MigrationVault.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(0), address(newToken), admin, pauser, unpauser))
-        );
+        new MigrationVault(address(0), address(newToken));
     }
 
-    /// @dev Verifies initialization reverts when _newToken is the zero address.
+    /// @dev Verifies the constructor reverts when _newToken is the zero address.
     function test_initialize_revertsZeroNewToken() public {
-        MigrationVault impl = new MigrationVault();
         vm.expectRevert(MigrationVault.ZeroAddress.selector);
-        new ERC1967Proxy(
-            address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(oldToken), address(0), admin, pauser, unpauser))
-        );
+        new MigrationVault(address(oldToken), address(0));
     }
 
     /// @dev Verifies initialization reverts when _admin is the zero address.
     function test_initialize_revertsZeroAdmin() public {
-        MigrationVault impl = new MigrationVault();
+        MigrationVault impl = new MigrationVault(address(oldToken), address(newToken));
         vm.expectRevert(MigrationVault.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(oldToken), address(newToken), address(0), pauser, unpauser))
+            abi.encodeCall(MigrationVault.initialize, (address(0), pauser, unpauser))
         );
     }
 
     /// @dev Verifies initialization reverts when _pauser is the zero address.
     function test_initialize_revertsZeroPauser() public {
-        MigrationVault impl = new MigrationVault();
+        MigrationVault impl = new MigrationVault(address(oldToken), address(newToken));
         vm.expectRevert(MigrationVault.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(oldToken), address(newToken), admin, address(0), unpauser))
+            abi.encodeCall(MigrationVault.initialize, (admin, address(0), unpauser))
         );
     }
 
     /// @dev Verifies initialization reverts when _unpauser is the zero address.
     function test_initialize_revertsZeroUnpauser() public {
-        MigrationVault impl = new MigrationVault();
+        MigrationVault impl = new MigrationVault(address(oldToken), address(newToken));
         vm.expectRevert(MigrationVault.ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(oldToken), address(newToken), admin, pauser, address(0)))
+            abi.encodeCall(MigrationVault.initialize, (admin, pauser, address(0)))
         );
     }
 
-    /// @dev Verifies initialization reverts when a token has more than 18 decimals.
+    /// @dev Verifies the constructor reverts when a token has more than 18 decimals.
     function test_initialize_revertsDecimalsExceedMax() public {
         MockERC20 badToken = new MockERC20("Bad", "BAD", 19);
-        MigrationVault impl = new MigrationVault();
         vm.expectRevert(MigrationVault.DecimalsExceedMax.selector);
-        new ERC1967Proxy(
-            address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(badToken), address(newToken), admin, pauser, unpauser))
-        );
+        new MigrationVault(address(badToken), address(newToken));
     }
 
     /// @dev Verifies the bare implementation contract cannot be initialized directly.
     function test_implementation_cannotBeInitialized() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        implementation.initialize(address(oldToken), address(newToken), admin, pauser, unpauser);
+        implementation.initialize(admin, pauser, unpauser);
     }
 
     // ---------------
@@ -303,10 +291,10 @@ contract MigrationVaultTest is Test, Roles {
         MockERC20 old18 = new MockERC20("Old18", "O18", 18);
         MockERC20 new6 = new MockERC20("New6", "N6", 6);
 
-        MigrationVault impl = new MigrationVault();
+        MigrationVault impl = new MigrationVault(address(old18), address(new6));
         ERC1967Proxy proxy = new ERC1967Proxy(
             address(impl),
-            abi.encodeCall(MigrationVault.initialize, (address(old18), address(new6), admin, pauser, unpauser))
+            abi.encodeCall(MigrationVault.initialize, (admin, pauser, unpauser))
         );
         MigrationVault truncVault = MigrationVault(address(proxy));
 
@@ -530,7 +518,7 @@ contract MigrationVaultTest is Test, Roles {
 
     /// @dev Verifies DEFAULT_ADMIN_ROLE can upgrade the implementation and state is preserved.
     function test_upgrade_byAdmin() public {
-        MigrationVault newImpl = new MigrationVault();
+        MigrationVault newImpl = new MigrationVault(address(oldToken), address(newToken));
 
         vm.prank(admin);
         vault.upgradeToAndCall(address(newImpl), "");
@@ -542,7 +530,7 @@ contract MigrationVaultTest is Test, Roles {
 
     /// @dev Verifies upgrade reverts when called by an account without DEFAULT_ADMIN_ROLE.
     function test_upgrade_revertsNonAdmin() public {
-        MigrationVault newImpl = new MigrationVault();
+        MigrationVault newImpl = new MigrationVault(address(oldToken), address(newToken));
 
         vm.expectRevert(
             abi.encodeWithSelector(
