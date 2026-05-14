@@ -7,7 +7,7 @@ import {DeployUtility} from "../utils/DeployUtility.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
-import "../utils/Constants.sol";
+import "./utils/Constants.sol";
 
 /**
  * @title BridgeTokens
