@@ -4,37 +4,29 @@ pragma solidity ^0.8.30;
 import {BaseConfigureDVNs} from "../base/BaseConfigureDVNs.s.sol";
 import "./utils/Constants.sol";
 
-/**
- * @title ConfigureDVNs (Mainnet)
- * @author chasebrownn
- * @notice Mainnet DVN and Executor configuration for TelcoinBridge / NativeBridge.
- *
- * @dev Inherits BaseConfigureDVNs and configures mainnet-specific parameters in setUp().
- *      Mainnet uses multiple required DVNs and an optional DVN quorum for additional security.
- *
- * ## How to Run
- *
- * Dry run (simulation):
- * ```
- * forge script script/mainnet/1_ConfigureDVNs.s.sol --multi
- * ```
- *
- * Live execution:
- * ```
- * forge script script/mainnet/1_ConfigureDVNs.s.sol --multi --broadcast -vvvv
- * ```
- */
+/// @title ConfigureDVNs (Mainnet)
+/// @notice Mainnet DVN and Executor configuration for TelcoinBridge / NativeBridge via Gnosis Safe.
+///
+/// @dev Inherits BaseConfigureDVNs and configures mainnet-specific parameters in setUp().
+///
+/// ## How to Run
+///
+/// Simulation (no HW wallet needed):
+/// ```
+/// forge script script/mainnet/2_ConfigureDVNs.s.sol --rpc-url $RPC_URL --ffi -vvvv
+/// ```
+///
+/// Broadcast (signs with Ledger, proposes to Safe TX Service):
+/// ```
+/// forge script script/mainnet/2_ConfigureDVNs.s.sol --rpc-url $RPC_URL --broadcast --ffi -vvvv
+/// ```
 contract ConfigureDVNs is BaseConfigureDVNs {
     function setUp() public {
-        _setup();
+        _initializeSafe();
 
         // --- DVN Parameters ---
         _confirmations = 15; // TODO: Finalize mainnet confirmations
         _maxMessageSize = 10000;
-
-        // --- DVN Providers (TODO: Set addresses per chain) ---
-        // Required: must ALL verify (e.g. LayerZero Labs + Google Cloud)
-        // Optional: quorum of N-of-M must verify (e.g. 2-of-3: Polyhedra, Nethermind, Horizen)
 
         // --- Chains ---
 
@@ -46,7 +38,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             ETH_MAINNET_LZ_ENDPOINT_V2,
             _ethRequiredDVNs(),
             _ethOptionalDVNs(),
-            0, // TODO: Set optional DVN threshold (e.g. 2)
+            0, // TODO: Set optional DVN threshold
             ETH_MAINNET_LZ_SEND_ULN_302,
             ETH_MAINNET_LZ_RECEIVE_ULN_302,
             ETH_MAINNET_LZ_EXECUTOR,
@@ -104,9 +96,6 @@ contract ConfigureDVNs is BaseConfigureDVNs {
     // DVN Arrays (per chain)
     // ---------------------------
 
-    // TODO: Populate with actual mainnet DVN addresses per chain.
-    //       Each chain may have different DVN provider addresses.
-
     function _ethRequiredDVNs() internal pure returns (address[] memory dvns) {
         dvns = new address[](1);
         dvns[0] = address(0); // TODO: e.g. LayerZero Labs DVN on Ethereum
@@ -138,7 +127,6 @@ contract ConfigureDVNs is BaseConfigureDVNs {
     // Helpers
     // ---------------------------
 
-    /// @dev Helper to construct ChainConfig (workaround for structs with dynamic arrays)
     function _buildChainConfig(
         string memory chainName,
         string memory rpcUrl,

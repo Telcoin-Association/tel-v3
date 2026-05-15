@@ -4,29 +4,25 @@ pragma solidity ^0.8.30;
 import {BaseConfigureDVNs} from "../base/BaseConfigureDVNs.s.sol";
 import "./utils/Constants.sol";
 
-/**
- * @title ConfigureDVNs (Testnet)
- * @author chasebrownn
- * @notice Testnet DVN and Executor configuration for TelcoinBridge across all supported chains.
- *
- * @dev Inherits BaseConfigureDVNs and configures testnet-specific parameters in setUp().
- *      For testnets, LayerZero Labs DVN is typically the only available DVN.
- *
- * ## How to Run
- *
- * Dry run (simulation):
- * ```
- * forge script script/testnet/1_ConfigureDVNs.s.sol --multi
- * ```
- *
- * Live execution:
- * ```
- * forge script script/testnet/1_ConfigureDVNs.s.sol --multi --broadcast -vvvv
- * ```
- */
+/// @title ConfigureDVNs (Testnet)
+/// @notice Testnet DVN and Executor configuration for TelcoinBridge via Gnosis Safe.
+///
+/// @dev Inherits BaseConfigureDVNs and configures testnet-specific parameters in setUp().
+///
+/// ## How to Run
+///
+/// Simulation (no HW wallet needed):
+/// ```
+/// forge script script/testnet/2_ConfigureDVNs.s.sol --rpc-url $RPC_URL --ffi -vvvv
+/// ```
+///
+/// Broadcast (signs with Ledger, proposes to Safe TX Service):
+/// ```
+/// forge script script/testnet/2_ConfigureDVNs.s.sol --rpc-url $RPC_URL --broadcast --ffi -vvvv
+/// ```
 contract ConfigureDVNs is BaseConfigureDVNs {
     function setUp() public {
-        _setup();
+        _initializeSafe();
 
         // --- DVN Parameters ---
         _confirmations = 1;
@@ -63,13 +59,11 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         ));
     }
 
-    /// @dev Helper to create a single-element DVN array
     function _singleDVN(address dvn) internal pure returns (address[] memory dvns) {
         dvns = new address[](1);
         dvns[0] = dvn;
     }
 
-    /// @dev Helper to construct ChainConfig (workaround for structs with dynamic arrays)
     function _buildChainConfig(
         string memory chainName,
         string memory rpcUrl,
