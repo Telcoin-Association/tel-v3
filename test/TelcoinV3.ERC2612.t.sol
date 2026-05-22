@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {TelcoinV3} from "../src/TelcoinV3.sol";
+import {EIP3009} from "../src/helpers/EIP3009.sol";
 import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
 import {MockERC1271Wallet} from "./mocks/MockERC1271Wallet.sol";
 
@@ -118,7 +119,7 @@ contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
         uint256 deadline = block.timestamp + 1 hours;
 
         // Don't set valid hash — wallet will reject
-        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        vm.expectRevert(EIP3009.InvalidSignature.selector);
         token.permit(address(wallet), user, 500 ether, deadline, 27, bytes32(uint256(1)), bytes32(uint256(2)));
     }
 
@@ -194,7 +195,7 @@ contract TelcoinV3ERC2612Test is TelcoinV3BaseSetup {
         uint256 deadline = block.timestamp + 1 hours;
 
         // Don't set valid hash — wallet will reject
-        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        vm.expectRevert(EIP3009.InvalidSignature.selector);
         token.permit(address(wallet), user, 500 ether, deadline, bytes("invalid-sig"));
     }
 }
