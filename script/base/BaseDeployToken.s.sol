@@ -13,17 +13,23 @@ import {Roles} from "../../src/helpers/Roles.sol";
 ///
 ///         Per chain:
 ///         1. Deploy TelcoinV3 (mints initialSupply to _admin)
-///         2. Grant PAUSER_ROLE to _admin
-///         3. Grant UNPAUSER_ROLE to _admin
+///         2. Grant PAUSER_ROLE to _pauser
+///         3. Grant UNPAUSER_ROLE to _unpauser
 ///         4. Save address to deployments JSON
 abstract contract BaseDeployToken is DeployUtility, Roles {
     using Safe for *;
 
+    // -----
+    // Roles
+    // -----
+
+    address internal _admin;
+    address internal _pauser;
+    address internal _unpauser;
+
     // ---------
     // Variables
     // ---------
-
-    address internal _admin;
 
     bytes32 internal _telcoinV3Salt;
 
@@ -58,7 +64,7 @@ abstract contract BaseDeployToken is DeployUtility, Roles {
     // Deploy
     // ------
 
-    /// @dev Deploys TelcoinV3, grants PAUSER/UNPAUSER to _admin, and persists the address to JSON.
+    /// @dev Deploys TelcoinV3, grants PAUSER/UNPAUSER to designated addresses, and persists to JSON.
     function _deployAndConfigure(TokenChainConfig memory chain) internal {
         require(
             block.chainid == chain.evmChainId,
@@ -76,18 +82,18 @@ abstract contract BaseDeployToken is DeployUtility, Roles {
         // 2. Configure roles
         TelcoinV3 telcoinContract = TelcoinV3(token);
 
-        if (!telcoinContract.hasRole(PAUSER_ROLE, _admin)) {
+        if (!telcoinContract.hasRole(PAUSER_ROLE, _pauser)) {
             _proposeTransaction(
                 token,
-                abi.encodeCall(telcoinContract.grantRole, (PAUSER_ROLE, _admin)),
-                "Grant PAUSER_ROLE to admin"
+                abi.encodeCall(telcoinContract.grantRole, (PAUSER_ROLE, _pauser)),
+                "Grant PAUSER_ROLE to pauser"
             );
         }
-        if (!telcoinContract.hasRole(UNPAUSER_ROLE, _admin)) {
+        if (!telcoinContract.hasRole(UNPAUSER_ROLE, _unpauser)) {
             _proposeTransaction(
                 token,
-                abi.encodeCall(telcoinContract.grantRole, (UNPAUSER_ROLE, _admin)),
-                "Grant UNPAUSER_ROLE to admin"
+                abi.encodeCall(telcoinContract.grantRole, (UNPAUSER_ROLE, _unpauser)),
+                "Grant UNPAUSER_ROLE to unpauser"
             );
         }
 

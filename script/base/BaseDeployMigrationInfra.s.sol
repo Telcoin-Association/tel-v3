@@ -30,6 +30,9 @@ abstract contract BaseDeployMigrationInfra is DeployUtility, Roles {
     // ---------
 
     address internal _admin;
+    address internal _pauser;
+    address internal _unpauser;
+    address internal _treasury;
     uint256 internal _migrationDuration;
     uint256 internal _withdrawalDelay;
 
@@ -109,14 +112,14 @@ abstract contract BaseDeployMigrationInfra is DeployUtility, Roles {
             );
         }
 
-        // 5. Grant TREASURY_ROLE to admin on MigrationVault
+        // 5. Grant TREASURY_ROLE to treasury on MigrationVault
         MigrationVault vault = MigrationVault(migrationVault);
         bytes32 treasuryRole = vault.TREASURY_ROLE();
-        if (!vault.hasRole(treasuryRole, _admin)) {
+        if (!vault.hasRole(treasuryRole, _treasury)) {
             _proposeTransaction(
                 migrationVault,
-                abi.encodeCall(vault.grantRole, (treasuryRole, _admin)),
-                "Grant TREASURY_ROLE to admin on MigrationVault"
+                abi.encodeCall(vault.grantRole, (treasuryRole, _treasury)),
+                "Grant TREASURY_ROLE to treasury on MigrationVault"
             );
         }
 
@@ -160,7 +163,7 @@ abstract contract BaseDeployMigrationInfra is DeployUtility, Roles {
         else console.log("MigrationVault impl already deployed at:", implAddr);
 
         // Deploy proxy
-        bytes memory initData = abi.encodeCall(MigrationVault.initialize, (_admin, _admin, _admin));
+        bytes memory initData = abi.encodeCall(MigrationVault.initialize, (_admin, _pauser, _unpauser));
         bytes memory proxyParams = abi.encode(implAddr, initData);
         bytes memory proxyBytecode = bytes.concat(type(ERC1967Proxy).creationCode, proxyParams);
         (address proxyAddr, bool proxyNew) = _deployCreate3(_migrationVaultProxySalt, proxyBytecode, "Deploy MigrationVault proxy");

@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseDeployMigrationInfra} from "../base/BaseDeployMigrationInfra.s.sol";
 import "./utils/Constants.sol";
+import "./utils/Roles.sol";
 
 /// @title DeployMigrationInfra (Mainnet)
 /// @notice Deploys TokenMigration + MigrationVault to mainnet chains via Gnosis Safe.
@@ -23,7 +24,10 @@ contract DeployMigrationInfra is BaseDeployMigrationInfra {
     function setUp() public {
         _initializeSafe();
 
-        _admin = deployerSafeAddress;
+        _admin = ADMIN;
+        _pauser = PAUSER;
+        _unpauser = UNPAUSER;
+        _treasury = TREASURY;
         _migrationSalt = keccak256("RAW_TELCOIN_MIGRATION_SALT_MAINNET");
         _migrationVaultImplSalt = keccak256("RAW_MIGRATION_VAULT_IMPL_SALT_MAINNET");
         _migrationVaultProxySalt = keccak256("RAW_MIGRATION_VAULT_PROXY_SALT_MAINNET");
