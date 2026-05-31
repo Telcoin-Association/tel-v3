@@ -16,3 +16,6 @@
 [submodule "lib/safe-utils"]
 	path = lib/safe-utils
 	url = https://github.com/Telcoin-Association/safe-utils.git
+[submodule "lib/forge-deploy-utils"]
+	path = lib/forge-deploy-utils
+	url = https://github.com/Telcoin-Association/forge-deploy-utils

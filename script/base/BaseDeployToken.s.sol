@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
 import {Safe} from "@safe-utils/Safe.sol";
-import {DeployUtility} from "../utils/DeployUtility.sol";
+import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {Roles} from "../../src/helpers/Roles.sol";
 
@@ -16,7 +16,7 @@ import {Roles} from "../../src/helpers/Roles.sol";
 ///         2. Grant PAUSER_ROLE to _pauser
 ///         3. Grant UNPAUSER_ROLE to _unpauser
 ///         4. Save address to deployments JSON
-abstract contract BaseDeployToken is DeployUtility, Roles {
+abstract contract BaseDeployToken is DeployBase, Roles {
     using Safe for *;
 
     // -----

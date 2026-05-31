@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {DeployUtility} from "../../utils/DeployUtility.sol";
+import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {TokenMigration} from "../../../src/TokenMigration.sol";
 
 /// @title MigrateTokens
@@ -21,7 +21,7 @@ import {TokenMigration} from "../../../src/TokenMigration.sol";
 /// ```
 /// forge script script/testnet/MigrateTokens.s.sol --fork-url $ETH_SEPOLIA_RPC_URL --broadcast --ffi -vvvv
 /// ```
-contract MigrateTokens is DeployUtility {
+contract MigrateTokens is DeployBase {
     // ---------
     // Variables
     // ---------

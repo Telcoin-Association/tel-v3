@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
 import {Safe} from "@safe-utils/Safe.sol";
-import {DeployUtility} from "../utils/DeployUtility.sol";
+import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import {SetConfigParam} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
 import {UlnConfig} from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
@@ -14,7 +14,7 @@ import {ExecutorConfig} from "@layerzerolabs/lz-evm-messagelib-v2/contracts/Send
 ///         All endpoint configuration calls are proposed as Safe transactions (simulation or broadcast).
 /// @dev    Children populate configuration in setUp() and call _initializeSafe()
 ///         or _initializeSafeMultiSig().
-abstract contract BaseConfigureDVNs is DeployUtility {
+abstract contract BaseConfigureDVNs is DeployBase {
     using Safe for *;
 
     // ---------

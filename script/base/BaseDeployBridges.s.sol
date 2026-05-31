@@ -5,7 +5,7 @@ import {console} from "forge-std/console.sol";
 import {Safe} from "@safe-utils/Safe.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
-import {DeployUtility} from "../utils/DeployUtility.sol";
+import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {NativeBridge} from "../../src/NativeBridge.sol";
@@ -21,7 +21,7 @@ import {Roles} from "../../src/helpers/Roles.sol";
 ///         - satellite: Deploy MintBurnWrapper + TelcoinBridge, grant MINTER/BURNER, authorize bridge
 ///
 ///         After all chains: Configure LayerZero peers between all bridges.
-abstract contract BaseDeployBridges is DeployUtility, Roles {
+abstract contract BaseDeployBridges is DeployBase, Roles {
     using Safe for *;
 
     // ---------

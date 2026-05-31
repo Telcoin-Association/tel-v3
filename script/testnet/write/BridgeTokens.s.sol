@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {DeployUtility} from "../../utils/DeployUtility.sol";
+import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {TelcoinBridge} from "../../../src/TelcoinBridge.sol";
 import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
@@ -28,7 +28,7 @@ import "../utils/Constants.sol";
 /// ```
 /// forge script script/testnet/BridgeTokens.s.sol --rpc-url <SOURCE_CHAIN_RPC> --broadcast --ffi -vvvv
 /// ```
-contract BridgeTokens is DeployUtility {
+contract BridgeTokens is DeployBase {
     // ---------
     // Constants
     // ---------

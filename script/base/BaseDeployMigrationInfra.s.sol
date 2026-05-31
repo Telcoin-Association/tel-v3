@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {console} from "forge-std/console.sol";
 import {Safe} from "@safe-utils/Safe.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {DeployUtility} from "../utils/DeployUtility.sol";
+import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TokenMigration} from "../../src/TokenMigration.sol";
 import {MigrationVault} from "../../src/MigrationVault.sol";
@@ -22,7 +22,7 @@ import {Roles} from "../../src/helpers/Roles.sol";
 ///         4. Grant MINTER_ROLE to TokenMigration on TelcoinV3
 ///         5. Grant TREASURY_ROLE to admin on MigrationVault
 ///         6. Save addresses to deployments JSON
-abstract contract BaseDeployMigrationInfra is DeployUtility, Roles {
+abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
     using Safe for *;
 
     // ---------
