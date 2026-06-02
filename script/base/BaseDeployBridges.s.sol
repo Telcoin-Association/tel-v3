@@ -61,7 +61,7 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
 
         // Deploy bridges
         for (uint256 i; i < len; ++i) {
-            vm.createSelectFork(allChains[i].rpcUrl);
+            uint256 forkId = vm.createSelectFork(allChains[i].rpcUrl);
             currentNonce = safe.getNonce();
 
             console.log("=== Deploy Bridges on %s ===", allChains[i].chainName);
@@ -69,7 +69,7 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
             address bridgeAddress = _deployAndConfigure(allChains[i]);
 
             getRuntimeData[allChains[i].rpcUrl] = RuntimeData({
-                forkId: i,
+                forkId: forkId,
                 bridgeAddress: bridgeAddress
             });
         }
