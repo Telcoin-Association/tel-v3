@@ -25,7 +25,6 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         _initializeSafe();
 
         // --- DVN Parameters ---
-        _confirmations = 1;
         _maxMessageSize = 10000;
 
         // --- Chains ---
@@ -41,7 +40,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             ETH_SEPOLIA_LZ_SEND_ULN_302,
             ETH_SEPOLIA_LZ_RECEIVE_ULN_302,
             ETH_SEPOLIA_LZ_EXECUTOR,
-            false
+            false,
+            1
         ));
 
         allChains.push(_buildChainConfig(
@@ -55,7 +55,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             BASE_SEPOLIA_LZ_SEND_ULN_302,
             BASE_SEPOLIA_LZ_RECEIVE_ULN_302,
             BASE_SEPOLIA_LZ_EXECUTOR,
-            false
+            false,
+            1
         ));
     }
 
@@ -75,7 +76,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         address sendLib,
         address receiveLib,
         address executor,
-        bool mainChain
+        bool mainChain,
+        uint64 confirmations
     ) internal pure returns (ChainConfig memory) {
         return ChainConfig({
             chainName: chainName,
@@ -88,7 +90,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             sendLib: sendLib,
             receiveLib: receiveLib,
             executor: executor,
-            mainChain: mainChain
+            mainChain: mainChain,
+            confirmations: confirmations
         });
     }
 }

@@ -28,7 +28,6 @@ abstract contract BaseConfigureDVNs is DeployBase {
     // Variables
     // ---------
 
-    uint64 internal _confirmations;
     uint32 internal _maxMessageSize;
 
     ChainConfig[] internal allChains;
@@ -45,6 +44,7 @@ abstract contract BaseConfigureDVNs is DeployBase {
         address receiveLib;
         address executor;
         bool mainChain;
+        uint64 confirmations;
     }
 
     // ------
@@ -260,9 +260,9 @@ abstract contract BaseConfigureDVNs is DeployBase {
     }
 
     /// @dev Encodes a UlnConfig struct from a chain's DVN arrays and threshold.
-    function _buildUlnConfig(ChainConfig memory chain) internal view returns (bytes memory) {
+    function _buildUlnConfig(ChainConfig memory chain) internal pure returns (bytes memory) {
         UlnConfig memory config = UlnConfig({
-            confirmations: _confirmations,
+            confirmations: chain.confirmations,
             requiredDVNCount: uint8(chain.requiredDVNs.length),
             optionalDVNCount: uint8(chain.optionalDVNs.length),
             optionalDVNThreshold: chain.optionalDVNThreshold,

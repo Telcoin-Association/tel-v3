@@ -25,7 +25,6 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         _initializeSafe();
 
         // --- DVN Parameters ---
-        _confirmations = 15; // TODO: Finalize mainnet confirmations
         _maxMessageSize = 10000;
 
         // --- Chains ---
@@ -42,7 +41,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             ETH_MAINNET_LZ_SEND_ULN_302,
             ETH_MAINNET_LZ_RECEIVE_ULN_302,
             ETH_MAINNET_LZ_EXECUTOR,
-            false
+            false,
+            15 // TODO: Finalize mainnet confirmations
         ));
 
         // Base Mainnet
@@ -57,7 +57,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             BASE_MAINNET_LZ_SEND_ULN_302,
             BASE_MAINNET_LZ_RECEIVE_ULN_302,
             BASE_MAINNET_LZ_EXECUTOR,
-            false
+            false,
+            15 // TODO: Finalize mainnet confirmations
         ));
 
         // Polygon Mainnet
@@ -72,7 +73,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             POLYGON_MAINNET_LZ_SEND_ULN_302,
             POLYGON_MAINNET_LZ_RECEIVE_ULN_302,
             POLYGON_MAINNET_LZ_EXECUTOR,
-            false
+            false,
+            15 // TODO: Finalize mainnet confirmations
         ));
 
         // TelcoinNetwork (main chain — NativeBridge)
@@ -138,7 +140,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         address sendLib,
         address receiveLib,
         address executor,
-        bool mainChain
+        bool mainChain,
+        uint64 confirmations
     ) internal pure returns (ChainConfig memory) {
         return ChainConfig({
             chainName: chainName,
@@ -151,7 +154,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             sendLib: sendLib,
             receiveLib: receiveLib,
             executor: executor,
-            mainChain: mainChain
+            mainChain: mainChain,
+            confirmations: confirmations
         });
     }
 }
