@@ -8,6 +8,8 @@ import {ILayerZeroEndpointV2} from "@layerzerolabs/lz-evm-protocol-v2/contracts/
 import {SetConfigParam} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
 import {UlnConfig} from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/UlnBase.sol";
 import {ExecutorConfig} from "@layerzerolabs/lz-evm-messagelib-v2/contracts/SendLibBase.sol";
+import {IOAppOptionsType3, EnforcedOptionParam} from
+    "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppOptionsType3.sol";
 
 /// @title BaseConfigureDVNs
 /// @notice Abstract base script to configure DVN and Executor settings via Gnosis Safe.
@@ -23,6 +25,7 @@ abstract contract BaseConfigureDVNs is DeployBase {
 
     uint32 constant CONFIG_TYPE_EXECUTOR = 1;
     uint32 constant CONFIG_TYPE_ULN = 2;
+    uint16 constant SEND = 1;
 
     // ---------
     // Variables
@@ -32,19 +35,35 @@ abstract contract BaseConfigureDVNs is DeployBase {
 
     ChainConfig[] internal allChains;
 
+    /// @notice Per-chain configuration for LayerZero DVN, executor, library, and enforced option settings.
+    /// @dev Populated by child scripts in setUp(). One entry per chain in the OFT mesh.
     struct ChainConfig {
+        /// @dev Name of chain used to locate the <chainName>.json for address tracking.
         string chainName;
+        /// @dev RPC URL used to fork this chain.
         string rpcUrl;
+        /// @dev LayerZero V2 endpoint ID for this chain.
         uint32 eid;
+        /// @dev Local LayerZero V2 endpoint contract for this chain.
         address endpoint;
+        /// @dev DVNs that must all verify every message on this chain.
         address[] requiredDVNs;
+        /// @dev Additional DVNs from which a threshold subset must verify.
         address[] optionalDVNs;
+        /// @dev Number of optional DVNs required to reach quorum.
         uint8 optionalDVNThreshold;
+        /// @dev SendUln302 library address for outbound messages.
         address sendLib;
+        /// @dev ReceiveUln302 library address for inbound messages.
         address receiveLib;
+        /// @dev LayerZero executor responsible for delivering messages on this chain.
         address executor;
+        /// @dev True if this is the native-TEL chain (NativeBridge); false for satellite chains (TelcoinBridge).
         bool mainChain;
+        /// @dev Block confirmations required before DVNs attest a message from this chain.
         uint64 confirmations;
+        /// @dev Minimum lzReceive gas enforced when this chain is the destination.
+        uint128 minDstGas;
     }
 
     // ------
@@ -99,9 +118,68 @@ abstract contract BaseConfigureDVNs is DeployBase {
 
                 console.log("");
             }
+
+            // (3) Configure enforced lzReceive gas options on this source bridge
+            {
+                ChainConfig memory srcChain = allChains[i];
+                vm.createSelectFork(srcChain.rpcUrl);
+                currentNonce = safe.getNonce();
+
+                string memory bridgeKey = srcChain.mainChain ? "NativeBridge" : "TelcoinBridge";
+                address bridge = _loadDeploymentAddress(srcChain.chainName, bridgeKey);
+
+                _configureEnforcedOptions(i, chainCount, bridge);
+            }
         }
 
         console.log("=== Configuration Complete ===");
+    }
+
+    // -----------------
+    // Enforced Options
+    // -----------------
+
+    /// @dev Builds and proposes enforced lzReceive gas options for all destination pathways from a single source bridge.
+    ///      Skips pathways where the enforced option is already set. Batches all updates into one Safe tx.
+    function _configureEnforcedOptions(uint256 srcIdx, uint256 chainCount, address bridge) internal {
+        uint256 peerCount = chainCount - 1;
+        EnforcedOptionParam[] memory params = new EnforcedOptionParam[](peerCount);
+        uint256 updateCount;
+
+        for (uint256 j; j < chainCount; ++j) {
+            if (srcIdx == j) continue;
+
+            ChainConfig memory dst = allChains[j];
+            bytes memory desired = _buildLzReceiveOption(dst.minDstGas);
+            bytes memory current = IOAppOptionsType3(bridge).combineOptions(dst.eid, SEND, bytes(""));
+
+            if (keccak256(current) != keccak256(desired)) {
+                params[updateCount] = EnforcedOptionParam({
+                    eid: dst.eid,
+                    msgType: SEND,
+                    options: desired
+                });
+                updateCount++;
+            }
+        }
+
+        if (updateCount == 0) {
+            console.log("  Enforced options already set on", allChains[srcIdx].chainName, ", skipping");
+            return;
+        }
+
+        // Trim array to actual update count
+        EnforcedOptionParam[] memory trimmed = new EnforcedOptionParam[](updateCount);
+        for (uint256 k; k < updateCount; ++k) {
+            trimmed[k] = params[k];
+        }
+
+        console.log("  Setting enforced lzReceive gas options on", allChains[srcIdx].chainName);
+        _proposeTransaction(
+            bridge,
+            abi.encodeCall(IOAppOptionsType3.setEnforcedOptions, (trimmed)),
+            "Set enforced lzReceive gas options"
+        );
     }
 
     // ----------------
@@ -281,5 +359,17 @@ abstract contract BaseConfigureDVNs is DeployBase {
         });
 
         return abi.encode(config);
+    }
+
+    /// @dev Encodes a Type 3 enforced option for lzReceive with the given gas limit.
+    ///      Equivalent to OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, 0).
+    function _buildLzReceiveOption(uint128 gas) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            uint16(3),  // TYPE_3
+            uint8(1),   // WORKER_ID (executor)
+            uint16(17), // option length: 16 bytes (uint128 gas) + 1 byte (option type)
+            uint8(1),   // OPTION_TYPE_LZRECEIVE
+            gas
+        );
     }
 }

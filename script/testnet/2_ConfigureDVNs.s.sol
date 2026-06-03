@@ -41,7 +41,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             ETH_SEPOLIA_LZ_RECEIVE_ULN_302,
             ETH_SEPOLIA_LZ_EXECUTOR,
             false,
-            1
+            1,
+            100_000 // TODO: Profile actual lzReceive gas
         ));
 
         allChains.push(_buildChainConfig(
@@ -56,7 +57,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             BASE_SEPOLIA_LZ_RECEIVE_ULN_302,
             BASE_SEPOLIA_LZ_EXECUTOR,
             false,
-            1
+            1,
+            100_000 // TODO: Profile actual lzReceive gas
         ));
     }
 
@@ -77,7 +79,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         address receiveLib,
         address executor,
         bool mainChain,
-        uint64 confirmations
+        uint64 confirmations,
+        uint128 minDstGas
     ) internal pure returns (ChainConfig memory) {
         return ChainConfig({
             chainName: chainName,
@@ -91,7 +94,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             receiveLib: receiveLib,
             executor: executor,
             mainChain: mainChain,
-            confirmations: confirmations
+            confirmations: confirmations,
+            minDstGas: minDstGas
         });
     }
 }

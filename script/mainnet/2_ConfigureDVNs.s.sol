@@ -42,7 +42,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             ETH_MAINNET_LZ_RECEIVE_ULN_302,
             ETH_MAINNET_LZ_EXECUTOR,
             false,
-            15 // TODO: Finalize mainnet confirmations
+            15, // TODO: Finalize mainnet confirmations
+            100_000 // TODO: Profile actual lzReceive gas
         ));
 
         // Base Mainnet
@@ -58,7 +59,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             BASE_MAINNET_LZ_RECEIVE_ULN_302,
             BASE_MAINNET_LZ_EXECUTOR,
             false,
-            15 // TODO: Finalize mainnet confirmations
+            15, // TODO: Finalize mainnet confirmations
+            100_000 // TODO: Profile actual lzReceive gas
         ));
 
         // Polygon Mainnet
@@ -74,7 +76,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             POLYGON_MAINNET_LZ_RECEIVE_ULN_302,
             POLYGON_MAINNET_LZ_EXECUTOR,
             false,
-            15 // TODO: Finalize mainnet confirmations
+            15, // TODO: Finalize mainnet confirmations
+            100_000 // TODO: Profile actual lzReceive gas
         ));
 
         // TelcoinNetwork (main chain — NativeBridge)
@@ -141,7 +144,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         address receiveLib,
         address executor,
         bool mainChain,
-        uint64 confirmations
+        uint64 confirmations,
+        uint128 minDstGas
     ) internal pure returns (ChainConfig memory) {
         return ChainConfig({
             chainName: chainName,
@@ -155,7 +159,8 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             receiveLib: receiveLib,
             executor: executor,
             mainChain: mainChain,
-            confirmations: confirmations
+            confirmations: confirmations,
+            minDstGas: minDstGas
         });
     }
 }
