@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
+// ----------
+// Legacy TEL
+// ----------
+
+address constant LEGACY_TELCOIN_ETHEREUM = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
+
 // -------------
 // EVM Chain IDs
 // -------------

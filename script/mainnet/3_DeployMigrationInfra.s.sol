@@ -36,12 +36,11 @@ contract DeployMigrationInfra is BaseDeployMigrationInfra {
         _withdrawalDelay = 90 days;
 
         // Only chains with legacy TEL tokens
-        // Ethereum Mainnet — TEL v2 at 0x467Bccd9d29f223BcE8043b84E8C8B282827790F
         allChains.push(MigrationChainConfig({
             chainName: "ethereum",
             rpcUrl: vm.envString("ETHEREUM_RPC_URL"),
             evmChainId: ETH_MAINNET_CHAIN_ID,
-            legacyTel: _loadDeploymentAddress("ethereum", "TelcoinLegacy"),
+            legacyTel: LEGACY_TELCOIN_ETHEREUM,
             deployLegacyTel: false
         }));
 
