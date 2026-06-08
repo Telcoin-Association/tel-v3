@@ -616,6 +616,38 @@ contract MigrationVaultTest is Test, Roles {
         vault.grantRole(treasuryRole, attacker);
     }
 
+    // -------------------
+    // Renounce Role Tests
+    // -------------------
+
+    /// @dev Verifies renounceRole reverts for DEFAULT_ADMIN_ROLE.
+    function test_renounceRole_revertsAdmin() public {
+        vm.prank(admin);
+        vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
+        vault.renounceRole(defaultAdminRole, admin);
+    }
+
+    /// @dev Verifies renounceRole reverts for PAUSER_ROLE.
+    function test_renounceRole_revertsPauser() public {
+        vm.prank(pauser);
+        vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
+        vault.renounceRole(pauserRole, pauser);
+    }
+
+    /// @dev Verifies renounceRole reverts for TREASURY_ROLE.
+    function test_renounceRole_revertsTreasury() public {
+        vm.prank(treasuryAddr);
+        vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
+        vault.renounceRole(treasuryRole, treasuryAddr);
+    }
+
+    /// @dev Verifies renounceRole reverts for UNPAUSER_ROLE.
+    function test_renounceRole_revertsUnpauser() public {
+        vm.prank(unpauser);
+        vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
+        vault.renounceRole(unpauserRole, unpauser);
+    }
+
     // ---------------
     // Constants Tests
     // ---------------
