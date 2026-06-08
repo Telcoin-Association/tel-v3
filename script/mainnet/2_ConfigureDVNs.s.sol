@@ -33,6 +33,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         allChains.push(_buildChainConfig(
             "ethereum",
             vm.envString("ETHEREUM_RPC_URL"),
+            ETH_MAINNET_CHAIN_ID,
             ETH_MAINNET_LZ_CHAIN_ID_V2,
             ETH_MAINNET_LZ_ENDPOINT_V2,
             _ethRequiredDVNs(),
@@ -50,6 +51,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         allChains.push(_buildChainConfig(
             "base",
             vm.envString("BASE_RPC_URL"),
+            BASE_MAINNET_CHAIN_ID,
             BASE_MAINNET_LZ_CHAIN_ID_V2,
             BASE_MAINNET_LZ_ENDPOINT_V2,
             _baseRequiredDVNs(),
@@ -67,6 +69,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         allChains.push(_buildChainConfig(
             "polygon",
             vm.envString("POLYGON_RPC_URL"),
+            POLYGON_MAINNET_CHAIN_ID,
             POLYGON_MAINNET_LZ_CHAIN_ID_V2,
             POLYGON_MAINNET_LZ_ENDPOINT_V2,
             _polygonRequiredDVNs(),
@@ -97,9 +100,9 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         // ));
     }
 
-    // ---------------------------
+    // ----------------------
     // DVN Arrays (per chain)
-    // ---------------------------
+    // ----------------------
 
     function _ethRequiredDVNs() internal pure returns (address[] memory dvns) {
         dvns = new address[](1);
@@ -128,13 +131,14 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         return new address[](0); // TODO
     }
 
-    // ---------------------------
+    // -------
     // Helpers
-    // ---------------------------
+    // -------
 
     function _buildChainConfig(
         string memory chainName,
         string memory rpcUrl,
+        uint256 evmChainId,
         uint32 eid,
         address endpoint,
         address[] memory requiredDVNs,
@@ -146,21 +150,20 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         bool mainChain,
         uint64 confirmations,
         uint128 minDstGas
-    ) internal pure returns (ChainConfig memory) {
-        return ChainConfig({
-            chainName: chainName,
-            rpcUrl: rpcUrl,
-            eid: eid,
-            endpoint: endpoint,
-            requiredDVNs: requiredDVNs,
-            optionalDVNs: optionalDVNs,
-            optionalDVNThreshold: optionalDVNThreshold,
-            sendLib: sendLib,
-            receiveLib: receiveLib,
-            executor: executor,
-            mainChain: mainChain,
-            confirmations: confirmations,
-            minDstGas: minDstGas
-        });
+    ) internal pure returns (ChainConfig memory c) {
+        c.chainName = chainName;
+        c.rpcUrl = rpcUrl;
+        c.evmChainId = evmChainId;
+        c.eid = eid;
+        c.endpoint = endpoint;
+        c.requiredDVNs = requiredDVNs;
+        c.optionalDVNs = optionalDVNs;
+        c.optionalDVNThreshold = optionalDVNThreshold;
+        c.sendLib = sendLib;
+        c.receiveLib = receiveLib;
+        c.executor = executor;
+        c.mainChain = mainChain;
+        c.confirmations = confirmations;
+        c.minDstGas = minDstGas;
     }
 }

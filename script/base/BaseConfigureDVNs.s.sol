@@ -42,6 +42,8 @@ abstract contract BaseConfigureDVNs is DeployBase {
         string chainName;
         /// @dev RPC URL used to fork this chain.
         string rpcUrl;
+        /// @dev Expected EVM chain ID for sanity-checking the fork.
+        uint256 evmChainId;
         /// @dev LayerZero V2 endpoint ID for this chain.
         uint32 eid;
         /// @dev Local LayerZero V2 endpoint contract for this chain.
@@ -92,6 +94,10 @@ abstract contract BaseConfigureDVNs is DeployBase {
 
                 // (1) Configure SEND on source chain
                 vm.createSelectFork(src.rpcUrl);
+                require(
+                    block.chainid == src.evmChainId,
+                    string.concat("Chain ID mismatch on source: expected ", vm.toString(src.evmChainId), " but got ", vm.toString(block.chainid))
+                );
                 currentNonce = safe.getNonce();
 
                 string memory srcBridgeKey = src.mainChain ? "NativeBridge" : "TelcoinBridge";
@@ -105,6 +111,10 @@ abstract contract BaseConfigureDVNs is DeployBase {
 
                 // (2) Configure RECEIVE on destination chain
                 vm.createSelectFork(dst.rpcUrl);
+                require(
+                    block.chainid == dst.evmChainId,
+                    string.concat("Chain ID mismatch on destination: expected ", vm.toString(dst.evmChainId), " but got ", vm.toString(block.chainid))
+                );
                 currentNonce = safe.getNonce();
 
                 string memory dstBridgeKey = dst.mainChain ? "NativeBridge" : "TelcoinBridge";
@@ -123,6 +133,10 @@ abstract contract BaseConfigureDVNs is DeployBase {
             {
                 ChainConfig memory srcChain = allChains[i];
                 vm.createSelectFork(srcChain.rpcUrl);
+                require(
+                    block.chainid == srcChain.evmChainId,
+                    string.concat("Chain ID mismatch: expected ", vm.toString(srcChain.evmChainId), " but got ", vm.toString(block.chainid))
+                );
                 currentNonce = safe.getNonce();
 
                 string memory bridgeKey = srcChain.mainChain ? "NativeBridge" : "TelcoinBridge";
@@ -199,8 +213,8 @@ abstract contract BaseConfigureDVNs is DeployBase {
         bool needsConfigUpdate;
 
         {
-            (address currentSendLib,) = _getSendLibrary(endpoint, srcBridge, dst.eid);
-            needsLibUpdate = currentSendLib != src.sendLib;
+            (address currentSendLib, bool isDefault) = _getSendLibrary(endpoint, srcBridge, dst.eid);
+            needsLibUpdate = isDefault || currentSendLib != src.sendLib;
         }
 
         bytes memory ulnConfig = _buildUlnConfig(src);
@@ -275,17 +289,20 @@ abstract contract BaseConfigureDVNs is DeployBase {
     ) internal {
         ILayerZeroEndpointV2 endpoint = ILayerZeroEndpointV2(dst.endpoint);
 
-        // 1. Set Receive Library
-        (address currentRecvLib,) = _getReceiveLibrary(endpoint, dstBridge, src.eid);
-
-        bool needsLibUpdate = currentRecvLib != dst.receiveLib;
+        bool needsLibUpdate;
         bool needsConfigUpdate;
 
-        // 2. Build ULN config
-        bytes memory ulnConfig = _buildUlnConfig(dst);
-        bytes memory currentUln = endpoint.getConfig(dstBridge, dst.receiveLib, src.eid, CONFIG_TYPE_ULN);
+        {
+            (address currentRecvLib, bool isDefault) = _getReceiveLibrary(endpoint, dstBridge, src.eid);
+            needsLibUpdate = isDefault || currentRecvLib != dst.receiveLib;
+        }
 
-        needsConfigUpdate = keccak256(currentUln) != keccak256(ulnConfig);
+        bytes memory ulnConfig = _buildUlnConfig(dst);
+
+        {
+            bytes memory currentUln = endpoint.getConfig(dstBridge, dst.receiveLib, src.eid, CONFIG_TYPE_ULN);
+            needsConfigUpdate = keccak256(currentUln) != keccak256(ulnConfig);
+        }
 
         if (!needsLibUpdate && !needsConfigUpdate) {
             console.log("  Receive config already set, skipping");
@@ -300,7 +317,7 @@ abstract contract BaseConfigureDVNs is DeployBase {
 
         if (needsLibUpdate) {
             targets[idx] = dst.endpoint;
-            datas[idx] = abi.encodeCall(endpoint.setReceiveLibrary, (dstBridge, src.eid, dst.receiveLib, 0));
+            datas[idx] = _encodeReceiveLibrary(endpoint, dstBridge, src.eid, dst.receiveLib);
             idx++;
             console.log("  ReceiveLibrary will be SET:", dst.receiveLib);
         }
@@ -316,6 +333,16 @@ abstract contract BaseConfigureDVNs is DeployBase {
         }
 
         _proposeTransactions(targets, datas, "Configure receive pathway");
+    }
+
+    /// @dev Encodes setReceiveLibrary calldata. Extracted to avoid stack-too-deep.
+    function _encodeReceiveLibrary(
+        ILayerZeroEndpointV2 endpoint,
+        address oapp,
+        uint32 eid,
+        address receiveLib
+    ) internal pure returns (bytes memory) {
+        return abi.encodeCall(endpoint.setReceiveLibrary, (oapp, eid, receiveLib, 0));
     }
 
     /// @dev Reads the current send library for an OApp on a given pathway.

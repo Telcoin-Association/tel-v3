@@ -32,6 +32,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         allChains.push(_buildChainConfig(
             "eth-sepolia",
             vm.envString("ETH_SEPOLIA_RPC_URL"),
+            ETH_SEPOLIA_CHAIN_ID,
             ETH_SEPOLIA_LZ_CHAIN_ID_V2,
             ETH_SEPOLIA_LZ_ENDPOINT_V2,
             _singleDVN(ETH_SEPOLIA_LZ_DVN),
@@ -48,6 +49,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         allChains.push(_buildChainConfig(
             "base-sepolia",
             vm.envString("BASE_SEPOLIA_RPC_URL"),
+            BASE_SEPOLIA_CHAIN_ID,
             BASE_SEPOLIA_LZ_CHAIN_ID_V2,
             BASE_SEPOLIA_LZ_ENDPOINT_V2,
             _singleDVN(BASE_SEPOLIA_LZ_DVN),
@@ -70,6 +72,7 @@ contract ConfigureDVNs is BaseConfigureDVNs {
     function _buildChainConfig(
         string memory chainName,
         string memory rpcUrl,
+        uint256 evmChainId,
         uint32 eid,
         address endpoint,
         address[] memory requiredDVNs,
@@ -81,21 +84,20 @@ contract ConfigureDVNs is BaseConfigureDVNs {
         bool mainChain,
         uint64 confirmations,
         uint128 minDstGas
-    ) internal pure returns (ChainConfig memory) {
-        return ChainConfig({
-            chainName: chainName,
-            rpcUrl: rpcUrl,
-            eid: eid,
-            endpoint: endpoint,
-            requiredDVNs: requiredDVNs,
-            optionalDVNs: optionalDVNs,
-            optionalDVNThreshold: optionalDVNThreshold,
-            sendLib: sendLib,
-            receiveLib: receiveLib,
-            executor: executor,
-            mainChain: mainChain,
-            confirmations: confirmations,
-            minDstGas: minDstGas
-        });
+    ) internal pure returns (ChainConfig memory c) {
+        c.chainName = chainName;
+        c.rpcUrl = rpcUrl;
+        c.evmChainId = evmChainId;
+        c.eid = eid;
+        c.endpoint = endpoint;
+        c.requiredDVNs = requiredDVNs;
+        c.optionalDVNs = optionalDVNs;
+        c.optionalDVNThreshold = optionalDVNThreshold;
+        c.sendLib = sendLib;
+        c.receiveLib = receiveLib;
+        c.executor = executor;
+        c.mainChain = mainChain;
+        c.confirmations = confirmations;
+        c.minDstGas = minDstGas;
     }
 }
