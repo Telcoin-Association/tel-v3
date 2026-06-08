@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {Safe} from "@safe-utils/Safe.sol";
 import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
@@ -97,8 +98,10 @@ abstract contract BaseDeployToken is DeployBase, Roles {
             );
         }
 
-        // 3. Save address
-        _saveDeploymentAddress(chain.chainName, "TelcoinV3", token);
+        // 3. Save address (only on broadcast to avoid polluting JSON during simulation)
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            _saveDeploymentAddress(chain.chainName, "TelcoinV3", token);
+        }
     }
 
     /// @dev Deploys TelcoinV3 via CREATE3. Mints `initSupply` to _admin at construction. Idempotent.

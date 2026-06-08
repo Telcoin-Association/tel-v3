@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {Safe} from "@safe-utils/Safe.sol";
 import {IOAppCore} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppCore.sol";
 import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
@@ -106,7 +107,9 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
 
         if (chain.mainChain) {
             bridge = _deployNativeBridge(chain.lzEndpoint);
-            _saveDeploymentAddress(chain.chainName, "NativeBridge", bridge);
+            if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+                _saveDeploymentAddress(chain.chainName, "NativeBridge", bridge);
+            }
         } else {
             address wrapper = _deployMintBurnWrapper(token);
             bridge = _deployTelcoinBridge(token, wrapper, chain.lzEndpoint);
@@ -139,8 +142,10 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 );
             }
 
-            _saveDeploymentAddress(chain.chainName, "MintBurnWrapper", wrapper);
-            _saveDeploymentAddress(chain.chainName, "TelcoinBridge", bridge);
+            if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+                _saveDeploymentAddress(chain.chainName, "MintBurnWrapper", wrapper);
+                _saveDeploymentAddress(chain.chainName, "TelcoinBridge", bridge);
+            }
         }
     }
 

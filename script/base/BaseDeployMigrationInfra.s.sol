@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {console} from "forge-std/console.sol";
+import {VmSafe} from "forge-std/Vm.sol";
 import {Safe} from "@safe-utils/Safe.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
@@ -92,7 +93,9 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
         address legacyTelcoin = chain.legacyTel;
         if (legacyTelcoin == address(0) && chain.deployLegacyTel) {
             legacyTelcoin = _deployLegacyTelcoin();
-            _saveDeploymentAddress(chain.chainName, "TelcoinLegacy", legacyTelcoin);
+            if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+                _saveDeploymentAddress(chain.chainName, "TelcoinLegacy", legacyTelcoin);
+            }
         }
         require(legacyTelcoin != address(0), string.concat("No legacy TEL for ", chain.chainName));
 
@@ -123,9 +126,11 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
             );
         }
 
-        // 6. Save addresses
-        _saveDeploymentAddress(chain.chainName, "TelcoinMigration", migrator);
-        _saveDeploymentAddress(chain.chainName, "MigrationVault", migrationVault);
+        // 6. Save addresses (only on broadcast to avoid polluting JSON during simulation)
+        if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
+            _saveDeploymentAddress(chain.chainName, "TelcoinMigration", migrator);
+            _saveDeploymentAddress(chain.chainName, "MigrationVault", migrationVault);
+        }
     }
 
     // -----------
