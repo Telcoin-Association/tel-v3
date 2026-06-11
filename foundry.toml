@@ -6,6 +6,7 @@ auto_detect_solc = true
 evm_version = "prague"
 bytecode_hash = "none"
 cbor_metadata = false
+ffi = true
 fs_permissions = [{ access = "read-write", path = "./deployments/"}]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

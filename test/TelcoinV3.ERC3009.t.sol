@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {TelcoinV3} from "../src/TelcoinV3.sol";
+import {EIP3009} from "../src/helpers/EIP3009.sol";
 import {TelcoinV3BaseSetup} from "./BaseSetup.sol";
 import {MockERC1271Wallet} from "./mocks/MockERC1271Wallet.sol";
 
@@ -60,7 +61,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
 
         token.transferWithAuthorization(signer, user, amount, validAfter, validBefore, nonce, v, r, s);
 
-        vm.expectRevert(TelcoinV3.AuthorizationAlreadyUsed.selector);
+        vm.expectRevert(EIP3009.AuthorizationAlreadyUsed.selector);
         token.transferWithAuthorization(signer, user, amount, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -79,7 +80,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         bytes32 digest = _buildDigest(structHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
 
-        vm.expectRevert(TelcoinV3.AuthorizationNotYetValid.selector);
+        vm.expectRevert(EIP3009.AuthorizationNotYetValid.selector);
         token.transferWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -99,7 +100,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         bytes32 digest = _buildDigest(structHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
 
-        vm.expectRevert(TelcoinV3.AuthorizationExpired.selector);
+        vm.expectRevert(EIP3009.AuthorizationExpired.selector);
         token.transferWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -119,7 +120,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         bytes32 digest = _buildDigest(structHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongPk, digest);
 
-        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        vm.expectRevert(EIP3009.InvalidSignature.selector);
         token.transferWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -189,7 +190,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
 
         vm.prank(attacker); // not the payee
-        vm.expectRevert(TelcoinV3.CallerMustBePayee.selector);
+        vm.expectRevert(EIP3009.CallerMustBePayee.selector);
         token.receiveWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -235,7 +236,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         assertTrue(token.authorizationState(signer, nonce));
 
         // Now try to use the canceled nonce — should revert
-        _expectRevertTransferAuth(signer, user, 100 ether, nonce, TelcoinV3.AuthorizationAlreadyUsed.selector);
+        _expectRevertTransferAuth(signer, user, 100 ether, nonce, EIP3009.AuthorizationAlreadyUsed.selector);
     }
 
     /// @notice cancelAuthorization reverts if nonce was already used.
@@ -252,7 +253,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         bytes32 cancelDigest = _buildDigest(cancelStructHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, cancelDigest);
 
-        vm.expectRevert(TelcoinV3.AuthorizationAlreadyUsed.selector);
+        vm.expectRevert(EIP3009.AuthorizationAlreadyUsed.selector);
         token.cancelAuthorization(signer, nonce, v, r, s);
     }
 
@@ -267,7 +268,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         bytes32 digest = _buildDigest(structHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongPk, digest);
 
-        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        vm.expectRevert(EIP3009.InvalidSignature.selector);
         token.cancelAuthorization(signer, nonce, v, r, s);
     }
 
@@ -279,7 +280,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         _cancelNonce(signer, nonce);
 
         // Now try receiveWithAuthorization with the canceled nonce — should revert
-        _expectRevertReceiveAuth(signer, user, 100 ether, nonce, TelcoinV3.AuthorizationAlreadyUsed.selector);
+        _expectRevertReceiveAuth(signer, user, 100 ether, nonce, EIP3009.AuthorizationAlreadyUsed.selector);
     }
 
     // ----------
@@ -326,7 +327,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
 
         // block.timestamp == validAfter means <= check fails with AuthorizationNotYetValid
-        vm.expectRevert(TelcoinV3.AuthorizationNotYetValid.selector);
+        vm.expectRevert(EIP3009.AuthorizationNotYetValid.selector);
         token.transferWithAuthorization(signer, user, 100 ether, t, t, nonce, v, r, s);
     }
 
@@ -363,7 +364,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
 
         // Try to use it as a receiveWithAuthorization — different type hash means different digest
         vm.prank(user);
-        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        vm.expectRevert(EIP3009.InvalidSignature.selector);
         token.receiveWithAuthorization(signer, user, 100 ether, validAfter, validBefore, nonce, v, r, s);
     }
 
@@ -414,7 +415,7 @@ contract TelcoinV3ERC3009Test is TelcoinV3BaseSetup {
 
         // Don't set a valid hash — wallet will reject
 
-        vm.expectRevert(TelcoinV3.InvalidSignature.selector);
+        vm.expectRevert(EIP3009.InvalidSignature.selector);
         token.transferWithAuthorization(address(wallet), user, 100 ether, validAfter, validBefore, nonce, 27, bytes32(uint256(1)), bytes32(uint256(2)));
     }
 

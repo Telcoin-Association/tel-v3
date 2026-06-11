@@ -95,6 +95,7 @@ contract MigrationVault is
     error ZeroAmount();
     error InsufficientReserves();
     error DecimalsExceedMax();
+    error CannotRenounceRole();
 
     // ------------------
     // Constructor / Init
@@ -208,6 +209,19 @@ contract MigrationVault is
         IERC20Metadata(token).safeTransfer(to, amount);
 
         emit Withdrawn(token, to, amount);
+    }
+
+    // --------------
+    // Access Control
+    // --------------
+
+    /**
+     * @notice Disabled — roles may only be revoked by an admin, never self-renounced.
+     * @dev Overrides AccessControl.renounceRole to prevent any role holder, including
+     *      the DEFAULT_ADMIN_ROLE, from voluntarily giving up their role.
+     */
+    function renounceRole(bytes32, address) public pure override {
+        revert CannotRenounceRole();
     }
 
     // ----

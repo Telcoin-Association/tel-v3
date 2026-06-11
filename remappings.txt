@@ -4,3 +4,8 @@
 @layerzerolabs/oft-evm/=lib/layerzero-devtools/packages/oft-evm/
 @openzeppelin/contracts/=lib/openzeppelin-contracts-upgradeable/lib/openzeppelin-contracts/contracts/
 @openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+forge-deploy-utils/=lib/forge-deploy-utils/src/
+@safe-utils/=lib/forge-deploy-utils/lib/safe-utils/src/
+safe-smart-account/=lib/forge-deploy-utils/lib/safe-utils/lib/safe-smart-account/contracts/
+solidity-http/=lib/forge-deploy-utils/lib/safe-utils/lib/solidity-http/src/
+solidity-stringutils/=lib/forge-deploy-utils/lib/safe-utils/lib/solidity-stringutils/src/
