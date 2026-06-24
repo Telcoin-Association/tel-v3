@@ -21,12 +21,12 @@ import "../utils/Constants.sol";
 ///
 /// Simulation:
 /// ```
-/// forge script script/testnet/BridgeTokens.s.sol --rpc-url <SOURCE_CHAIN_RPC> --ffi -vvvv
+/// forge script script/testnet/write/BridgeTokens.s.sol --rpc-url <SOURCE_CHAIN_RPC> --ffi -vvvv
 /// ```
 ///
 /// Broadcast (proposes to Safe TX Service):
 /// ```
-/// forge script script/testnet/BridgeTokens.s.sol --rpc-url <SOURCE_CHAIN_RPC> --broadcast --ffi -vvvv
+/// forge script script/testnet/write/BridgeTokens.s.sol --rpc-url <SOURCE_CHAIN_RPC> --broadcast --ffi -vvvv
 /// ```
 contract BridgeTokens is DeployBase {
     // ---------
@@ -53,7 +53,7 @@ contract BridgeTokens is DeployBase {
     // -----
 
     function setUp() public {
-        _initializeSafe();
+        _initializeSafeMultiSig();
 
         // pathway[0] = SOURCE chain (tokens burned here)
         // pathway[1] = DESTINATION chain (tokens minted here)

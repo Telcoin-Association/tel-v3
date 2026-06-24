@@ -5,7 +5,7 @@ pragma solidity ^0.8.30;
 // Authorized Addresses
 // --------------------
 
-address constant ADMIN = 0x28937C70A08390c55b65Eab24600c4b059A50991; // Testnet Safe
-address constant PAUSER = 0x28937C70A08390c55b65Eab24600c4b059A50991; // TODO: set dedicated pauser
-address constant UNPAUSER = 0x28937C70A08390c55b65Eab24600c4b059A50991; // TODO: set dedicated unpauser
-address constant TREASURY = 0x28937C70A08390c55b65Eab24600c4b059A50991; // TODO: set dedicated treasury
+address constant ADMIN = 0x765327d1AeA74cC360B1C6Cc567200d7e4baC3fD; // Testnet Safe
+address constant PAUSER = 0x765327d1AeA74cC360B1C6Cc567200d7e4baC3fD; // TODO: set dedicated pauser
+address constant UNPAUSER = 0x765327d1AeA74cC360B1C6Cc567200d7e4baC3fD; // TODO: set dedicated unpauser
+address constant TREASURY = 0x765327d1AeA74cC360B1C6Cc567200d7e4baC3fD; // TODO: set dedicated treasury

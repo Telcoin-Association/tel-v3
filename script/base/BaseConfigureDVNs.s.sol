@@ -13,7 +13,7 @@ import {IOAppOptionsType3, EnforcedOptionParam} from
 
 /// @title BaseConfigureDVNs
 /// @notice Abstract base script to configure DVN and Executor settings via Gnosis Safe.
-///         All endpoint configuration calls are proposed as Safe transactions (simulation or broadcast).
+///         All config calls for a single chain are batched into one MultiSend Safe transaction.
 /// @dev    Children populate configuration in setUp() and call _initializeSafe()
 ///         or _initializeSafeMultiSig().
 abstract contract BaseConfigureDVNs is DeployBase {
@@ -34,6 +34,10 @@ abstract contract BaseConfigureDVNs is DeployBase {
     uint32 internal _maxMessageSize;
 
     ChainConfig[] internal allChains;
+
+    // Batch accumulation
+    address[] internal _batchTargets;
+    bytes[] internal _batchDatas;
 
     /// @notice Per-chain configuration for LayerZero DVN, executor, library, and enforced option settings.
     /// @dev Populated by child scripts in setUp(). One entry per chain in the OFT mesh.
@@ -72,7 +76,8 @@ abstract contract BaseConfigureDVNs is DeployBase {
     // Script
     // ------
 
-    /// @dev Iterates every src→dst pathway, fork-switches per side, and proposes DVN/Executor config.
+    /// @dev Iterates each chain, collects all DVN/Executor/EnforcedOption config into one batch,
+    ///      and proposes a single MultiSend Safe transaction per chain.
     function run() public {
         uint256 chainCount = allChains.length;
 
@@ -82,127 +87,78 @@ abstract contract BaseConfigureDVNs is DeployBase {
         console.log("");
 
         for (uint256 i; i < chainCount; ++i) {
+            ChainConfig memory chain = allChains[i];
+
+            vm.createSelectFork(chain.rpcUrl);
+            require(
+                block.chainid == chain.evmChainId,
+                string.concat("Chain ID mismatch: expected ", vm.toString(chain.evmChainId), " but got ", vm.toString(block.chainid))
+            );
+            currentNonce = safe.getNonce();
+
+            string memory bridgeKey = chain.mainChain ? "NativeBridge" : "TelcoinBridge";
+            address bridge = _loadDeploymentAddress(chain.chainName, bridgeKey);
+            require(bridge != address(0), string.concat("Bridge not deployed on ", chain.chainName));
+
+            console.log("----------------------------------------");
+            console.log("Collecting config for %s (bridge: %s)", chain.chainName, bridge);
+
             for (uint256 j; j < chainCount; ++j) {
                 if (i == j) continue;
+                ChainConfig memory peer = allChains[j];
 
-                ChainConfig memory src = allChains[i];
-                ChainConfig memory dst = allChains[j];
+                console.log("  Pathway: %s -> %s", chain.chainName, peer.chainName);
+                _collectSendConfig(chain, peer, bridge);
 
-                console.log("----------------------------------------");
-                console.log("Configuring pathway:", src.chainName, "->", dst.chainName);
-                console.log("");
-
-                // (1) Configure SEND on source chain
-                vm.createSelectFork(src.rpcUrl);
-                require(
-                    block.chainid == src.evmChainId,
-                    string.concat("Chain ID mismatch on source: expected ", vm.toString(src.evmChainId), " but got ", vm.toString(block.chainid))
-                );
-                currentNonce = safe.getNonce();
-
-                string memory srcBridgeKey = src.mainChain ? "NativeBridge" : "TelcoinBridge";
-                address srcBridge = _loadDeploymentAddress(src.chainName, srcBridgeKey);
-                require(srcBridge != address(0), string.concat("Bridge not deployed on ", src.chainName));
-
-                console.log("  [Source:", src.chainName, "]");
-                console.log("  Bridge:", srcBridge);
-
-                _configureSendOnSource(src, dst, srcBridge);
-
-                // (2) Configure RECEIVE on destination chain
-                vm.createSelectFork(dst.rpcUrl);
-                require(
-                    block.chainid == dst.evmChainId,
-                    string.concat("Chain ID mismatch on destination: expected ", vm.toString(dst.evmChainId), " but got ", vm.toString(block.chainid))
-                );
-                currentNonce = safe.getNonce();
-
-                string memory dstBridgeKey = dst.mainChain ? "NativeBridge" : "TelcoinBridge";
-                address dstBridge = _loadDeploymentAddress(dst.chainName, dstBridgeKey);
-                require(dstBridge != address(0), string.concat("Bridge not deployed on ", dst.chainName));
-
-                console.log("  [Destination:", dst.chainName, "]");
-                console.log("  Bridge:", dstBridge);
-
-                _configureReceiveOnDestination(src, dst, dstBridge);
-
-                console.log("");
+                console.log("  Pathway: %s -> %s (receive)", peer.chainName, chain.chainName);
+                _collectReceiveConfig(peer, chain, bridge);
             }
 
-            // (3) Configure enforced lzReceive gas options on this source bridge
-            {
-                ChainConfig memory srcChain = allChains[i];
-                vm.createSelectFork(srcChain.rpcUrl);
-                require(
-                    block.chainid == srcChain.evmChainId,
-                    string.concat("Chain ID mismatch: expected ", vm.toString(srcChain.evmChainId), " but got ", vm.toString(block.chainid))
-                );
-                currentNonce = safe.getNonce();
+            _collectEnforcedOptions(i, chainCount, bridge);
 
-                string memory bridgeKey = srcChain.mainChain ? "NativeBridge" : "TelcoinBridge";
-                address bridge = _loadDeploymentAddress(srcChain.chainName, bridgeKey);
-
-                _configureEnforcedOptions(i, chainCount, bridge);
-            }
+            _flushBatch(string.concat("Configure DVNs on ", chain.chainName));
+            console.log("");
         }
 
         console.log("=== Configuration Complete ===");
     }
 
     // -----------------
-    // Enforced Options
+    // Batch Helpers
     // -----------------
 
-    /// @dev Builds and proposes enforced lzReceive gas options for all destination pathways from a single source bridge.
-    ///      Skips pathways where the enforced option is already set. Batches all updates into one Safe tx.
-    function _configureEnforcedOptions(uint256 srcIdx, uint256 chainCount, address bridge) internal {
-        uint256 peerCount = chainCount - 1;
-        EnforcedOptionParam[] memory params = new EnforcedOptionParam[](peerCount);
-        uint256 updateCount;
+    function _addToBatch(address target, bytes memory data) internal {
+        _batchTargets.push(target);
+        _batchDatas.push(data);
+    }
 
-        for (uint256 j; j < chainCount; ++j) {
-            if (srcIdx == j) continue;
-
-            ChainConfig memory dst = allChains[j];
-            bytes memory desired = _buildLzReceiveOption(dst.minDstGas);
-            bytes memory current = IOAppOptionsType3(bridge).combineOptions(dst.eid, SEND, bytes(""));
-
-            if (keccak256(current) != keccak256(desired)) {
-                params[updateCount] = EnforcedOptionParam({
-                    eid: dst.eid,
-                    msgType: SEND,
-                    options: desired
-                });
-                updateCount++;
-            }
-        }
-
-        if (updateCount == 0) {
-            console.log("  Enforced options already set on", allChains[srcIdx].chainName, ", skipping");
+    function _flushBatch(string memory description) internal {
+        uint256 len = _batchTargets.length;
+        if (len == 0) {
+            console.log("  No config changes needed, skipping");
             return;
         }
 
-        // Trim array to actual update count
-        EnforcedOptionParam[] memory trimmed = new EnforcedOptionParam[](updateCount);
-        for (uint256 k; k < updateCount; ++k) {
-            trimmed[k] = params[k];
+        address[] memory targets = new address[](len);
+        bytes[] memory datas = new bytes[](len);
+        for (uint256 i; i < len; ++i) {
+            targets[i] = _batchTargets[i];
+            datas[i] = _batchDatas[i];
         }
 
-        console.log("  Setting enforced lzReceive gas options on", allChains[srcIdx].chainName);
-        _proposeTransaction(
-            bridge,
-            abi.encodeCall(IOAppOptionsType3.setEnforcedOptions, (trimmed)),
-            "Set enforced lzReceive gas options"
-        );
+        console.log("  Proposing %d txns as single MultiSend", len);
+        _proposeTransactions(targets, datas, description);
+
+        delete _batchTargets;
+        delete _batchDatas;
     }
 
-    // ----------------
-    // Internal Helpers
-    // ----------------
+    // -----------------
+    // Config Collectors
+    // -----------------
 
-    /// @dev Sets send library + ULN/Executor config on the source chain for a given pathway.
-    ///      Batches setSendLibrary + setConfig into a single Safe tx when both need updating.
-    function _configureSendOnSource(
+    /// @dev Collects send library + ULN/Executor config for a single src→dst pathway.
+    function _collectSendConfig(
         ChainConfig memory src,
         ChainConfig memory dst,
         address srcBridge
@@ -228,61 +184,23 @@ abstract contract BaseConfigureDVNs is DeployBase {
         }
 
         if (!needsLibUpdate && !needsConfigUpdate) {
-            console.log("  Send config already set, skipping");
+            console.log("    Send config already set, skipping");
             return;
         }
 
-        // Batch into one Safe tx
-        uint256 txCount = (needsLibUpdate ? 1 : 0) + (needsConfigUpdate ? 1 : 0);
-        address[] memory targets = new address[](txCount);
-        bytes[] memory datas = new bytes[](txCount);
-        uint256 idx;
-
         if (needsLibUpdate) {
-            targets[idx] = src.endpoint;
-            datas[idx] = _encodeSendLibrary(endpoint, srcBridge, dst.eid, src.sendLib);
-            idx++;
-            console.log("  SendLibrary will be SET:", src.sendLib);
+            _addToBatch(src.endpoint, _encodeSendLibrary(endpoint, srcBridge, dst.eid, src.sendLib));
+            console.log("    SendLibrary will be SET:", src.sendLib);
         }
 
         if (needsConfigUpdate) {
-            targets[idx] = src.endpoint;
-            datas[idx] = _encodeSendConfig(endpoint, srcBridge, src.sendLib, dst.eid, ulnConfig, executorConfig);
-            idx++;
-            console.log("  Send config will be SET (ULN + Executor)");
+            _addToBatch(src.endpoint, _encodeSendConfig(endpoint, srcBridge, src.sendLib, dst.eid, ulnConfig, executorConfig));
+            console.log("    Send config will be SET (ULN + Executor)");
         }
-
-        _proposeTransactions(targets, datas, "Configure send pathway");
     }
 
-    /// @dev Encodes setSendLibrary calldata. Extracted to avoid stack-too-deep.
-    function _encodeSendLibrary(
-        ILayerZeroEndpointV2 endpoint,
-        address oapp,
-        uint32 eid,
-        address sendLib
-    ) internal pure returns (bytes memory) {
-        return abi.encodeCall(endpoint.setSendLibrary, (oapp, eid, sendLib));
-    }
-
-    /// @dev Encodes setConfig calldata for ULN + Executor params. Extracted to avoid stack-too-deep.
-    function _encodeSendConfig(
-        ILayerZeroEndpointV2 endpoint,
-        address oapp,
-        address sendLib,
-        uint32 eid,
-        bytes memory ulnConfig,
-        bytes memory executorConfig
-    ) internal pure returns (bytes memory) {
-        SetConfigParam[] memory params = new SetConfigParam[](2);
-        params[0] = SetConfigParam({eid: eid, configType: CONFIG_TYPE_ULN, config: ulnConfig});
-        params[1] = SetConfigParam({eid: eid, configType: CONFIG_TYPE_EXECUTOR, config: executorConfig});
-        return abi.encodeCall(endpoint.setConfig, (oapp, sendLib, params));
-    }
-
-    /// @dev Sets receive library + ULN config on the destination chain for a given pathway.
-    ///      Batches setReceiveLibrary + setConfig into a single Safe tx when both need updating.
-    function _configureReceiveOnDestination(
+    /// @dev Collects receive library + ULN config for a single src→dst pathway (called from dst's fork).
+    function _collectReceiveConfig(
         ChainConfig memory src,
         ChainConfig memory dst,
         address dstBridge
@@ -305,37 +223,88 @@ abstract contract BaseConfigureDVNs is DeployBase {
         }
 
         if (!needsLibUpdate && !needsConfigUpdate) {
-            console.log("  Receive config already set, skipping");
+            console.log("    Receive config already set, skipping");
             return;
         }
 
-        // Batch: setReceiveLibrary + setConfig into one Safe tx
-        uint256 txCount = (needsLibUpdate ? 1 : 0) + (needsConfigUpdate ? 1 : 0);
-        address[] memory targets = new address[](txCount);
-        bytes[] memory datas = new bytes[](txCount);
-        uint256 idx;
-
         if (needsLibUpdate) {
-            targets[idx] = dst.endpoint;
-            datas[idx] = _encodeReceiveLibrary(endpoint, dstBridge, src.eid, dst.receiveLib);
-            idx++;
-            console.log("  ReceiveLibrary will be SET:", dst.receiveLib);
+            _addToBatch(dst.endpoint, _encodeReceiveLibrary(endpoint, dstBridge, src.eid, dst.receiveLib));
+            console.log("    ReceiveLibrary will be SET:", dst.receiveLib);
         }
 
         if (needsConfigUpdate) {
             SetConfigParam[] memory params = new SetConfigParam[](1);
             params[0] = SetConfigParam({eid: src.eid, configType: CONFIG_TYPE_ULN, config: ulnConfig});
 
-            targets[idx] = dst.endpoint;
-            datas[idx] = abi.encodeCall(endpoint.setConfig, (dstBridge, dst.receiveLib, params));
-            idx++;
-            console.log("  Receive config will be SET (ULN)");
+            _addToBatch(dst.endpoint, abi.encodeCall(endpoint.setConfig, (dstBridge, dst.receiveLib, params)));
+            console.log("    Receive config will be SET (ULN)");
         }
-
-        _proposeTransactions(targets, datas, "Configure receive pathway");
     }
 
-    /// @dev Encodes setReceiveLibrary calldata. Extracted to avoid stack-too-deep.
+    /// @dev Collects enforced lzReceive gas options for all destination pathways from a single source bridge.
+    function _collectEnforcedOptions(uint256 srcIdx, uint256 chainCount, address bridge) internal {
+        uint256 peerCount = chainCount - 1;
+        EnforcedOptionParam[] memory params = new EnforcedOptionParam[](peerCount);
+        uint256 updateCount;
+
+        for (uint256 j; j < chainCount; ++j) {
+            if (srcIdx == j) continue;
+
+            ChainConfig memory dst = allChains[j];
+            bytes memory desired = _buildLzReceiveOption(dst.minDstGas);
+            bytes memory current = IOAppOptionsType3(bridge).combineOptions(dst.eid, SEND, bytes(""));
+
+            if (keccak256(current) != keccak256(desired)) {
+                params[updateCount] = EnforcedOptionParam({
+                    eid: dst.eid,
+                    msgType: SEND,
+                    options: desired
+                });
+                updateCount++;
+            }
+        }
+
+        if (updateCount == 0) {
+            console.log("  Enforced options already set on %s, skipping", allChains[srcIdx].chainName);
+            return;
+        }
+
+        EnforcedOptionParam[] memory trimmed = new EnforcedOptionParam[](updateCount);
+        for (uint256 k; k < updateCount; ++k) {
+            trimmed[k] = params[k];
+        }
+
+        console.log("  Setting enforced lzReceive gas options on %s", allChains[srcIdx].chainName);
+        _addToBatch(bridge, abi.encodeCall(IOAppOptionsType3.setEnforcedOptions, (trimmed)));
+    }
+
+    // ----------------
+    // Encoding Helpers
+    // ----------------
+
+    function _encodeSendLibrary(
+        ILayerZeroEndpointV2 endpoint,
+        address oapp,
+        uint32 eid,
+        address sendLib
+    ) internal pure returns (bytes memory) {
+        return abi.encodeCall(endpoint.setSendLibrary, (oapp, eid, sendLib));
+    }
+
+    function _encodeSendConfig(
+        ILayerZeroEndpointV2 endpoint,
+        address oapp,
+        address sendLib,
+        uint32 eid,
+        bytes memory ulnConfig,
+        bytes memory executorConfig
+    ) internal pure returns (bytes memory) {
+        SetConfigParam[] memory params = new SetConfigParam[](2);
+        params[0] = SetConfigParam({eid: eid, configType: CONFIG_TYPE_ULN, config: ulnConfig});
+        params[1] = SetConfigParam({eid: eid, configType: CONFIG_TYPE_EXECUTOR, config: executorConfig});
+        return abi.encodeCall(endpoint.setConfig, (oapp, sendLib, params));
+    }
+
     function _encodeReceiveLibrary(
         ILayerZeroEndpointV2 endpoint,
         address oapp,
@@ -345,7 +314,10 @@ abstract contract BaseConfigureDVNs is DeployBase {
         return abi.encodeCall(endpoint.setReceiveLibrary, (oapp, eid, receiveLib, 0));
     }
 
-    /// @dev Reads the current send library for an OApp on a given pathway.
+    // ----------------
+    // Read Helpers
+    // ----------------
+
     function _getSendLibrary(
         ILayerZeroEndpointV2 endpoint,
         address oapp,
@@ -355,7 +327,6 @@ abstract contract BaseConfigureDVNs is DeployBase {
         isDefault = endpoint.isDefaultSendLibrary(oapp, eid);
     }
 
-    /// @dev Reads the current receive library for an OApp on a given pathway.
     function _getReceiveLibrary(
         ILayerZeroEndpointV2 endpoint,
         address oapp,
@@ -364,7 +335,10 @@ abstract contract BaseConfigureDVNs is DeployBase {
         (lib, isDefault) = endpoint.getReceiveLibrary(oapp, eid);
     }
 
-    /// @dev Encodes a UlnConfig struct from a chain's DVN arrays and threshold.
+    // ----------------
+    // Build Helpers
+    // ----------------
+
     function _buildUlnConfig(ChainConfig memory chain) internal pure returns (bytes memory) {
         UlnConfig memory config = UlnConfig({
             confirmations: chain.confirmations,
@@ -378,7 +352,6 @@ abstract contract BaseConfigureDVNs is DeployBase {
         return abi.encode(config);
     }
 
-    /// @dev Encodes an ExecutorConfig struct with _maxMessageSize and the given executor.
     function _buildExecutorConfig(address executor) internal view returns (bytes memory) {
         ExecutorConfig memory config = ExecutorConfig({
             maxMessageSize: _maxMessageSize,
@@ -388,8 +361,6 @@ abstract contract BaseConfigureDVNs is DeployBase {
         return abi.encode(config);
     }
 
-    /// @dev Encodes a Type 3 enforced option for lzReceive with the given gas limit.
-    ///      Equivalent to OptionsBuilder.newOptions().addExecutorLzReceiveOption(gas, 0).
     function _buildLzReceiveOption(uint128 gas) internal pure returns (bytes memory) {
         return abi.encodePacked(
             uint16(3),  // TYPE_3

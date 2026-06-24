@@ -21,15 +21,15 @@ import "./utils/Roles.sol";
 /// ```
 contract DeployMigrationInfra is BaseDeployMigrationInfra {
     function setUp() public {
-        _initializeSafe();
+        _initializeSafeMultiSig();
 
         _admin = ADMIN;
         _pauser = PAUSER;
         _unpauser = UNPAUSER;
         _treasury = TREASURY;
-        _migrationSalt = keccak256("RAW_TELCOIN_MIGRATION_SALT_V2");
-        _migrationVaultImplSalt = keccak256("RAW_MIGRATION_VAULT_IMPL_SALT_V2");
-        _migrationVaultProxySalt = keccak256("RAW_MIGRATION_VAULT_PROXY_SALT_V2");
+        _migrationSalt = keccak256("RAW_TELCOIN_MIGRATION_SALT_V3");
+        _migrationVaultImplSalt = keccak256("RAW_MIGRATION_VAULT_IMPL_SALT_V3");
+        _migrationVaultProxySalt = keccak256("RAW_MIGRATION_VAULT_PROXY_SALT_V3");
 
         _migrationDuration = 365 days;
         _withdrawalDelay = 90 days;

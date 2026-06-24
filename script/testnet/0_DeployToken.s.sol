@@ -21,12 +21,12 @@ import "./utils/Roles.sol";
 /// ```
 contract DeployToken is BaseDeployToken {
     function setUp() public {
-        _initializeSafe();
+        _initializeSafeMultiSig();
 
         _admin = ADMIN;
         _pauser = PAUSER;
         _unpauser = UNPAUSER;
-        _telcoinV3Salt = keccak256("RAW_TELCOIN_V3_SALT_V2");
+        _telcoinV3Salt = keccak256("RAW_TELCOIN_V3_SALT_V3");
 
         allChains.push(TokenChainConfig({
             chainName: "eth-sepolia",

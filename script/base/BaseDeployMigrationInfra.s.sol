@@ -6,6 +6,9 @@ import {VmSafe} from "forge-std/Vm.sol";
 import {Safe} from "@safe-utils/Safe.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {DeployBase} from "forge-deploy-utils/DeployBase.sol";
+import {SaltMath} from "forge-deploy-utils/libraries/SaltMath.sol";
+import {ICreateX} from "forge-deploy-utils/interfaces/ICreateX.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TokenMigration} from "../../src/TokenMigration.sol";
 import {MigrationVault} from "../../src/MigrationVault.sol";
@@ -13,10 +16,11 @@ import {Roles} from "../../src/helpers/Roles.sol";
 
 /// @title BaseDeployMigrationInfra
 /// @notice Deploys TokenMigration + MigrationVault and configures roles.
+///         All deploys and role grants for a single chain are batched into one MultiSend Safe transaction.
 /// @dev    Step 3 in the deployment pipeline. Requires TelcoinV3 already deployed (loaded from JSON).
 ///         Only run on chains that have a legacy TEL token to migrate from.
 ///
-///         Per chain:
+///         Per chain (single MultiSend):
 ///         1. (Optional) Deploy legacy Telcoin for testnet
 ///         2. Deploy TokenMigration
 ///         3. Deploy MigrationVault (implementation + proxy)
@@ -51,6 +55,10 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
 
     MigrationChainConfig[] internal allChains;
 
+    // Batch accumulation
+    address[] internal _batchTargets;
+    bytes[] internal _batchDatas;
+
     // ------
     // Script
     // ------
@@ -74,7 +82,7 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
     // ------
 
     /// @dev Loads TelcoinV3 from JSON. Resolves legacy token (optionally deploying on testnet),
-    ///      deploys TokenMigration + MigrationVault, grants MINTER and TREASURY roles.
+    ///      batches TokenMigration + MigrationVault deploys and role grants into one MultiSend.
     function _deployAndConfigure(MigrationChainConfig memory chain) internal {
         require(
             block.chainid == chain.evmChainId,
@@ -89,7 +97,7 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
         address token = _loadDeploymentAddress(chain.chainName, "TelcoinV3");
         require(token != address(0), string.concat("TelcoinV3 not deployed on ", chain.chainName));
 
-        // 1. Resolve legacy token
+        // 1. Resolve legacy token (not batched — uses deployCode cheatcode)
         address legacyTelcoin = chain.legacyTel;
         if (legacyTelcoin == address(0) && chain.deployLegacyTel) {
             legacyTelcoin = _deployLegacyTelcoin();
@@ -99,83 +107,101 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
         }
         require(legacyTelcoin != address(0), string.concat("No legacy TEL for ", chain.chainName));
 
-        // 2. Deploy TokenMigration
-        address migrator = _deployTokenMigration(legacyTelcoin, token);
+        // 2. Deploy TokenMigration (batched)
+        address migrator = _addCreate3ToBatch(
+            _migrationSalt,
+            bytes.concat(
+                type(TokenMigration).creationCode,
+                abi.encode(legacyTelcoin, token, _admin, _migrationDuration, _withdrawalDelay)
+            ),
+            "Deploy TokenMigration"
+        );
 
-        // 3. Deploy MigrationVault
-        address migrationVault = _deployMigrationVault(legacyTelcoin, token);
+        // 3. Deploy MigrationVault impl (batched)
+        address implAddr = _addCreate3ToBatch(
+            _migrationVaultImplSalt,
+            bytes.concat(type(MigrationVault).creationCode, abi.encode(legacyTelcoin, token)),
+            "Deploy MigrationVault impl"
+        );
 
-        // 4. Grant MINTER_ROLE to TokenMigration on TelcoinV3
-        TelcoinV3 telcoinContract = TelcoinV3(token);
-        if (!telcoinContract.hasRole(MINTER_ROLE, migrator)) {
-            _proposeTransaction(
-                token,
-                abi.encodeCall(telcoinContract.grantRole, (MINTER_ROLE, migrator)),
-                "Grant MINTER_ROLE to TokenMigration"
-            );
-        }
+        // 4. Deploy MigrationVault proxy (batched)
+        bytes memory initData = abi.encodeCall(MigrationVault.initialize, (_admin, _pauser, _unpauser));
+        address proxyAddr = _addCreate3ToBatch(
+            _migrationVaultProxySalt,
+            bytes.concat(type(ERC1967Proxy).creationCode, abi.encode(implAddr, initData)),
+            "Deploy MigrationVault proxy"
+        );
 
-        // 5. Grant TREASURY_ROLE to treasury on MigrationVault
-        MigrationVault vault = MigrationVault(migrationVault);
-        bytes32 treasuryRole = vault.TREASURY_ROLE();
-        if (!vault.hasRole(treasuryRole, _treasury)) {
-            _proposeTransaction(
-                migrationVault,
-                abi.encodeCall(vault.grantRole, (treasuryRole, _treasury)),
-                "Grant TREASURY_ROLE to treasury on MigrationVault"
-            );
-        }
+        // 5. Grant MINTER_ROLE to TokenMigration on TelcoinV3 (batched)
+        console.log("  [batch] Grant MINTER_ROLE to TokenMigration");
+        _batchTargets.push(token);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (MINTER_ROLE, migrator)));
 
-        // 6. Save addresses (only on broadcast to avoid polluting JSON during simulation)
+        // 6. Grant TREASURY_ROLE to treasury on MigrationVault (batched)
+        console.log("  [batch] Grant TREASURY_ROLE to treasury");
+        bytes32 treasuryRole = keccak256("TREASURY_ROLE");
+        _batchTargets.push(proxyAddr);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (treasuryRole, _treasury)));
+
+        // 7. Flush batch
+        _flushBatch(string.concat("Deploy migration infra on ", chain.chainName));
+
+        // 8. Save addresses (only on broadcast to avoid polluting JSON during simulation)
         if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
             _saveDeploymentAddress(chain.chainName, "TelcoinMigration", migrator);
-            _saveDeploymentAddress(chain.chainName, "MigrationVault", migrationVault);
+            _saveDeploymentAddress(chain.chainName, "MigrationVault", proxyAddr);
         }
     }
 
-    // -----------
-    // Deployments
-    // -----------
+    // -------
+    // Helpers
+    // -------
 
-    /// @dev Deploys legacy Telcoin (^0.4.18) using deployCode. Testnet only.
+    /// @dev Deploys legacy Telcoin (^0.4.18) using deployCode. Testnet only. Not batched.
     function _deployLegacyTelcoin() internal returns (address) {
         address legacyTelcoin = deployCode("Telcoin.sol:Telcoin", abi.encode(deployerSafeAddress));
         console.log("Legacy Telcoin deployed at:", legacyTelcoin);
         return legacyTelcoin;
     }
 
-    /// @dev Deploys TokenMigration via CREATE3. Time-limited 1:1 swap with escrow. Idempotent.
-    function _deployTokenMigration(address legacyToken, address telcoinV3) internal returns (address) {
-        bytes memory params = abi.encode(legacyToken, telcoinV3, _admin, _migrationDuration, _withdrawalDelay);
-        bytes memory bytecode = bytes.concat(type(TokenMigration).creationCode, params);
-        (address addr, bool isNew) = _deployCreate3(_migrationSalt, bytecode, "Deploy TokenMigration");
+    /// @dev Computes CREATE3 address and adds the deploy tx to the batch. Idempotent.
+    function _addCreate3ToBatch(bytes32 rawSalt, bytes memory initCode, string memory label)
+        internal
+        returns (address)
+    {
+        bytes32 guardedSalt = SaltMath.guardSalt(deployerSafeAddress, rawSalt);
+        require(SaltMath.extractGuard(guardedSalt) == deployerSafeAddress, "guarded salt incorrect");
+        address expectedAddress = _computeCreate3Address(guardedSalt);
 
-        if (isNew) console.log("Deployed TokenMigration at:", addr);
-        else console.log("TokenMigration already deployed at:", addr);
+        if (expectedAddress.code.length > 0) {
+            console.log("  [batch] %s already deployed at %s, skipping", label, expectedAddress);
+            return expectedAddress;
+        }
 
-        return addr;
+        console.log("  [batch] %s (expected: %s)", label, expectedAddress);
+        _batchTargets.push(CREATEX);
+        _batchDatas.push(abi.encodeCall(ICreateX.deployCreate3, (guardedSalt, initCode)));
+        return expectedAddress;
     }
 
-    /// @dev Deploys MigrationVault impl + ERC1967Proxy via CREATE3. Proxy is initialized with
-    ///      _admin as admin, pauser, and unpauser. Returns the proxy address. Idempotent.
-    function _deployMigrationVault(address legacyToken, address telcoinV3) internal returns (address) {
-        // Deploy implementation
-        bytes memory implParams = abi.encode(legacyToken, telcoinV3);
-        bytes memory implBytecode = bytes.concat(type(MigrationVault).creationCode, implParams);
-        (address implAddr, bool implNew) = _deployCreate3(_migrationVaultImplSalt, implBytecode, "Deploy MigrationVault impl");
+    function _flushBatch(string memory description) internal {
+        uint256 len = _batchTargets.length;
+        if (len == 0) {
+            console.log("  No changes needed, skipping");
+            return;
+        }
 
-        if (implNew) console.log("Deployed MigrationVault impl at:", implAddr);
-        else console.log("MigrationVault impl already deployed at:", implAddr);
+        address[] memory targets = new address[](len);
+        bytes[] memory datas = new bytes[](len);
+        for (uint256 i; i < len; ++i) {
+            targets[i] = _batchTargets[i];
+            datas[i] = _batchDatas[i];
+        }
 
-        // Deploy proxy
-        bytes memory initData = abi.encodeCall(MigrationVault.initialize, (_admin, _pauser, _unpauser));
-        bytes memory proxyParams = abi.encode(implAddr, initData);
-        bytes memory proxyBytecode = bytes.concat(type(ERC1967Proxy).creationCode, proxyParams);
-        (address proxyAddr, bool proxyNew) = _deployCreate3(_migrationVaultProxySalt, proxyBytecode, "Deploy MigrationVault proxy");
+        console.log("  Proposing %d txns as single MultiSend", len);
+        _proposeTransactions(targets, datas, description);
 
-        if (proxyNew) console.log("Deployed MigrationVault proxy at:", proxyAddr);
-        else console.log("MigrationVault proxy already deployed at:", proxyAddr);
-
-        return proxyAddr;
+        delete _batchTargets;
+        delete _batchDatas;
     }
 }
