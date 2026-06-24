@@ -63,7 +63,7 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 | **Entity** | LayerZero Labs |
 | **Chain Coverage** | 80+ chains — broadest coverage of any DVN |
 | **Chains We Need** | Ethereum, Base, Polygon — all supported |
-| **Notes** | Default DVN for most applications. Battle-tested with 200M+ messages verified. Most protocols include LZ DVN as a required verifier. |
+| **Notes** | Default DVN for most applications. Battle-tested with 100M+ messages verified (as of Oct 2024). Most protocols include LZ DVN as a required verifier. |
 
 #### 2. Canary DVN
 
@@ -72,32 +72,33 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 | **Client** | Custom Go implementation |
 | **Cloud** | AWS (Nitro TEE) |
 | **Entity** | Canary Protocol |
-| **Chain Coverage** | 90+ chains — largest coverage of any third-party DVN |
+| **Chain Coverage** | Wide coverage (exact count unconfirmed — verify via [LZ DVN addresses](https://docs.layerzero.network/v2/deployments/dvn-addresses)) |
 | **Chains We Need** | Ethereum, Base, Polygon — all supported |
 | **Security Model** | TEE-based verification (AWS Nitro enclaves) with cryptographic attestation + EigenLayer cryptoeconomic security (staking/slashing). Slashable stake backs every verification. |
-| **Notes** | Only DVN with a non-TypeScript, non-Rust client — provides true client diversity against LayerZero's Gasolina. TEE + staking model provides both hardware and economic security guarantees. |
+| **Notes** | The **only** DVN provider not running LayerZero's Gasolina client — provides the only source of client diversity in the ecosystem. TEE + staking model provides both hardware and economic security guarantees. |
 
 #### 3. Nethermind DVN
 
 | Attribute | Details |
 |-----------|---------|
-| **Client** | Custom (Nethermind team) |
-| **Cloud** | Multi-AZ with load balancing |
+| **Client** | Gasolina (TypeScript) |
+| **Cloud** | GCP (multi-AZ with load balancing) — Nethermind is a [Google Cloud customer](https://cloud.google.com/customers/nethermind); overlaps with LayerZero Labs |
 | **Entity** | Nethermind (Ethereum execution client team) |
 | **Chain Coverage** | 70+ chains |
 | **Chains We Need** | Ethereum, Base, Polygon — all supported |
-| **Notes** | Described as LayerZero's most "robust" partner with a **dedicated team** for DVN maintenance. Nethermind also builds the flagship Nethermind Ethereum execution client (C#/.NET). Hybrid globally redundant platform with 24/7 SRE coverage and unified observability. One of LayerZero's original DVN launch partners. |
+| **Notes** | Described as LayerZero's most "robust" partner with a **dedicated team** for DVN maintenance. Nethermind also builds the flagship Nethermind Ethereum execution client (C#/.NET). Hybrid globally redundant platform with 24/7 SRE coverage and unified observability. One of LayerZero's original DVN launch partners. Uses LayerZero's Gasolina client like most DVN operators. |
+| **⚠️ Independence Concern** | The KelpDAO exploit post-mortem (April 2026) revealed that the LayerZero Labs DVN and Nethermind DVN share **substantial ADMIN_ROLE overlap on-chain** (10+ shared admin addresses). This raises questions about the true independence of these two DVNs — a compromise of shared admin keys could affect both simultaneously. Consider this when evaluating mesh options that rely on both as "required" verifiers. See [KelpDAO incident discussion](https://x.com/catwychan/status/2051805623906402570). |
 
 #### 4. Deutsche Telekom MMS DVN
 
 | Attribute | Details |
 |-----------|---------|
-| **Client** | Custom |
+| **Client** | Gasolina (TypeScript) |
 | **Cloud** | Open Telekom Cloud (OTC) — European data centers, **not** AWS/GCP/Azure |
 | **Entity** | Deutsche Telekom MMS (subsidiary of Deutsche Telekom AG) |
-| **Chain Coverage** | 25+ chains |
+| **Chain Coverage** | 12+ chains (Ethereum, Mantle, Linea, Fantom, Arbitrum, Solana, Avalanche, Base, BNB, Gnosis, Optimism, Polygon at launch) |
 | **Chains We Need** | Ethereum, Base, Polygon — ✅ all supported |
-| **Notes** | Unique cloud diversity — runs on Deutsche Telekom's own European cloud infrastructure, independent of US hyperscalers. Institutional-grade entity (€100B+ parent company). Has operated blockchain validators since 2020 (NEAR, Polygon). Joined LayerZero May 2025. |
+| **Notes** | Unique cloud diversity — runs on Deutsche Telekom's own European cloud infrastructure, independent of US hyperscalers. Institutional-grade entity (€100B+ parent company). Has operated blockchain validators, oracles, and indexers since 2020 (Injective, SQD, NEAR). Joined LayerZero May 2025. |
 
 ### Tier 2 — Additional Providers
 
@@ -105,10 +106,10 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 
 | Attribute | Details |
 |-----------|---------|
-| **Client** | Custom |
+| **Client** | Gasolina (TypeScript) |
 | **Cloud** | Fidelity infrastructure |
 | **Entity** | FCAT (Fidelity Investments R&D arm) |
-| **Chain Coverage** | ~7 chains (Ethereum, Polygon, Arbitrum, Base, Optimism, Avalanche, Solana) |
+| **Chain Coverage** | ~11 chains (launched with 7: Ethereum, Polygon, Arbitrum, Base, Optimism, Avalanche, Solana; expanded to 11 by Feb 2026) |
 | **Chains We Need** | Ethereum, Base, Polygon — ✅ all supported |
 | **Notes** | Primarily utilized by Ondo Finance for institutional RWA bridging. Fidelity entity adds strong institutional credibility. Limited chain coverage (focused on major chains only). |
 
@@ -116,7 +117,7 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 
 | Attribute | Details |
 |-----------|---------|
-| **Client** | Custom |
+| **Client** | Gasolina (TypeScript) |
 | **Cloud** | TBD |
 | **Entity** | Luganodes (Lugano-based validator operator) |
 | **Chain Coverage** | 20+ chains |
@@ -127,7 +128,7 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 
 | Attribute | Details |
 |-----------|---------|
-| **Client** | Custom |
+| **Client** | Gasolina (TypeScript) |
 | **Cloud** | GCP |
 | **Entity** | P2P.org (original Lido incubator) |
 | **Chain Coverage** | 20+ chains |
@@ -138,7 +139,7 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 
 | Attribute | Details |
 |-----------|---------|
-| **Client** | Custom |
+| **Client** | Gasolina (TypeScript) |
 | **Cloud** | TBD |
 | **Entity** | Nansen (blockchain analytics company) |
 | **Chain Coverage** | 15+ chains |
@@ -151,29 +152,24 @@ A DVN must be deployed on **both** the source and destination chain to verify a 
 
 ### Client Diversity Matrix
 
-| Client Language | DVN Provider(s) |
-|----------------|-----------------|
-| TypeScript (Gasolina) | LayerZero Labs |
-| Go | Canary |
-| Custom (C#/.NET team) | Nethermind |
-| Custom (unknown) | Deutsche Telekom, FCAT, Luganodes, P2P, Nansen |
-| Rust | (Not yet released — future option) |
-| OpenZeppelin client | (Not yet released — future option) |
+Only two DVN client implementations exist today:
 
-> **Key insight:** LayerZero Labs + Canary + Nethermind gives us 3 distinct client implementations. This is the strongest client diversity achievable today.
+| Client | DVN Provider(s) |
+|--------|-----------------|
+| Gasolina (TypeScript, built by LayerZero) | LayerZero Labs, Nethermind, Deutsche Telekom, FCAT, Luganodes, P2P, Nansen |
+| Canary (Go, built by Canary Protocol) | Canary |
 
 ### Cloud/Infrastructure Diversity Matrix
 
 | Cloud Provider | DVN Provider(s) |
 |---------------|-----------------|
-| GCP | LayerZero Labs, P2P |
+| GCP | LayerZero Labs, Nethermind, P2P |
 | AWS (Nitro TEE) | Canary |
 | Open Telekom Cloud (Europe) | Deutsche Telekom |
-| Multi-AZ (hybrid) | Nethermind |
 | Fidelity infra | FCAT |
 | Unknown | Luganodes, Nansen |
 
-> **Key insight:** LayerZero (GCP) + Canary (AWS) + Deutsche Telekom (OTC) gives us 3 completely independent cloud providers. Nethermind's multi-AZ setup adds further resilience.
+> **Key insight:** LayerZero Labs, Nethermind, and P2P all run on GCP — less cloud diversity than previously assumed. Canary (AWS) and Deutsche Telekom (OTC) are the only confirmed independent cloud providers. Note that Gasolina offers both GCP and AWS deployment tooling, so providers *could* run on either — but confirmed deployments cluster on GCP.
 
 ### Entity Diversity Summary
 
@@ -248,15 +244,13 @@ DVN verification fees are **extremely cheap** — roughly **$0.003 per DVN per m
 
 Total DVN-only costs per message (Ethereum → Base pathway, ETH ≈ $2,020):
 
-| Config | DVN Count | DVN Cost (USD) | vs. Option A |
-|--------|-----------|----------------|-------------|
-| **Option A** — 2 required (LZ + Nethermind) | 2 | $0.0065 | baseline |
-| **Option B** — 2 req + 1-of-2 opt (+ Canary, DT) | 4 | $0.0131 | +101% |
-| **Option C** — 2 req + 2-of-3 opt (+ Canary, DT, FCAT) | 5 | $0.0164 | +151% |
-| **Option D** — 3 required (LZ + Canary + Nethermind) | 3 | $0.0098 | +51% |
-| **Option E** — 3 req + 1-of-2 opt (+ DT, FCAT) | 5 | $0.0164 | +151% |
+| Config | DVN Count | DVN Cost (USD) | Notes |
+|--------|-----------|----------------|-------|
+| **Option F** ⭐ — 3 req (LZ + Canary + DT) + 1-of-2 opt (Nethermind, FCAT) | 5 | ~$0.016 | Recommended — 4-of-5, fully independent required set |
+| **Option G** — 3 req (LZ + Canary + DT) + 1-of-2 opt (FCAT, P2P) | 5 | ~$0.016 | Nethermind-free variant |
+| **Option H** — 3 req (LZ + Canary + DT) + 2-of-3 opt (Nethermind, FCAT, P2P) | 6 | ~$0.019 | Maximum — 5-of-6 |
 
-> **Bottom line:** Even at 5 DVNs (Options C/E), total DVN cost is ~$0.016 per message — **less than 2 cents**. The difference between 2 and 5 DVNs is ~$0.01. Security should drive this decision, not cost.
+> **Bottom line:** All preferred options cost ~$0.016–$0.019 per message — **less than 2 cents**. Security and independence should drive this decision, not cost.
 
 ### Cost Impact of N-of-M Configurations
 
@@ -271,13 +265,84 @@ Total DVN-only costs per message (Ethereum → Base pathway, ETH ≈ $2,020):
 
 ### Protocol Fee Switch
 
-LayerZero governance controls a protocol fee of up to 100% of DVN + executor costs. The fee switch was **activated in December 2025** via governance vote (97% approval). Since February 2026, protocol fees are being collected, converted to ZRO, and burned. This effectively adds a surcharge on top of DVN + executor fees. The exact current rate should be confirmed via the [LayerZero fee switch page](https://layerzero.foundation/fee-switch) before finalizing cost projections.
+LayerZero governance controls a protocol fee of up to 100% of DVN + executor costs. Referendum #3 (Dec 20–27, 2025) saw 97% approval but **failed to reach quorum** (required 230M ZRO / 40.59% of circulating supply), so the **fee switch remains OFF**. The next referendum is expected ~6 months after the failed vote. If activated in the future, it would add a surcharge on top of DVN + executor fees, with proceeds converted to ZRO and burned. Monitor the [LayerZero fee switch page](https://layerzero.foundation/fee-switch) for updates.
 
 ---
 
 ## Mesh Configuration Options
 
-### Option A: Minimal Secure (2 Required)
+### Preferred Options (LZ + Canary + Deutsche Telekom core)
+
+The following options are built around the strongest available required set: **LayerZero Labs, Canary, and Deutsche Telekom**. These three have:
+- **True client diversity** — Gasolina + Canary's Go client
+- **Full cloud independence** — GCP + AWS (Nitro TEE) + Open Telekom Cloud
+- **No shared admin keys** — each operated by a fully independent entity
+- **Entity diversity** — protocol team + crypto-native + institutional/TradFi
+
+#### Option F: Recommended (3 Required + 1-of-2 Optional) ⭐
+
+```
+Required: [LayerZero Labs, Canary, Deutsche Telekom]
+Optional: [Nethermind, FCAT]
+Threshold: 3 Required + 1-of-2 Optional (4 of 5 must agree)
+```
+
+| Metric | Assessment |
+|--------|-----------|
+| Security | Very strong — 4 of 5 must agree, with fully independent required set |
+| Client diversity | Yes — Gasolina + Canary client (in required set) |
+| Cloud diversity | Strongest (GCP, AWS, OTC in required; GCP + Fidelity infra in optional) |
+| Entity independence | Strongest — no admin overlap between required DVNs |
+| DVN cost per msg | ~$0.016 |
+| Liveness risk | Low — any 1 optional can go down; all 3 required must be live |
+| **Notes** | Nethermind in optional still provides value (depth, entity diversity) without the risk of relying on it as required alongside LZ Labs given their admin overlap. FCAT adds institutional/Fidelity credibility. |
+
+#### Option G: Nethermind-Free Variant (3 Required + 1-of-2 Optional)
+
+```
+Required: [LayerZero Labs, Canary, Deutsche Telekom]
+Optional: [FCAT, P2P]
+Threshold: 3 Required + 1-of-2 Optional (4 of 5 must agree)
+```
+
+| Metric | Assessment |
+|--------|-----------|
+| Security | Very strong — 4 of 5 must agree, fully independent required set |
+| Client diversity | Yes — Gasolina + Canary client (in required set) |
+| Cloud diversity | Strong (GCP, AWS, OTC in required; Fidelity infra + GCP in optional) |
+| Entity independence | Strongest — completely avoids LZ/Nethermind admin overlap concern |
+| DVN cost per msg | ~$0.016 |
+| Liveness risk | Low — any 1 optional can go down; all 3 required must be live |
+| **Notes** | Eliminates Nethermind entirely for maximum separation from LZ Labs infrastructure. Trades Nethermind's track record for P2P's long validator history. |
+
+#### Option H: Maximum (3 Required + 2-of-3 Optional)
+
+```
+Required: [LayerZero Labs, Canary, Deutsche Telekom]
+Optional: [Nethermind, FCAT, P2P]
+Threshold: 3 Required + 2-of-3 Optional (5 of 6 must agree)
+```
+
+| Metric | Assessment |
+|--------|-----------|
+| Security | Maximum — 5 of 6 must agree, fully independent required set |
+| Client diversity | Yes — Gasolina + Canary client (in required set) |
+| Cloud diversity | Strongest (GCP, AWS, OTC, Fidelity infra) |
+| Entity independence | Strongest required set + deep optional bench |
+| DVN cost per msg | ~$0.019 |
+| Liveness risk | Lowest — optional set tolerates 1 failure; required set must be live |
+| **Notes** | Exceeds 4-of-5 threshold. Higher than requested but near-zero marginal cost (~$0.003 more than Option F). Nethermind admin overlap is tolerable in optional since the required set is fully independent. |
+
+---
+
+### Deprecated Options (A–E)
+
+> **⚠️ The following options were drafted before the KelpDAO incident (April 2026) revealed that LayerZero Labs and Nethermind share substantial ADMIN_ROLE overlap on-chain and both run on GCP with the same Gasolina client. Options that rely on both as required verifiers have weaker actual independence than originally assessed. They are preserved here for reference but are superseded by Options F–H above.**
+
+<details>
+<summary>Click to expand deprecated options</summary>
+
+#### Option A: Minimal Secure (2 Required)
 
 ```
 Required: [LayerZero Labs, Nethermind]
@@ -287,13 +352,13 @@ Threshold: 2-of-2
 
 | Metric | Assessment |
 |--------|-----------|
-| Security | Moderate — two independent verifications |
-| Client diversity | Partial (TS + custom) |
-| Cloud diversity | Partial (GCP + multi-AZ) |
+| Security | ~~Moderate~~ → **Weak** — shared admin keys, same client, same cloud |
+| Client diversity | None — both use Gasolina |
+| Cloud diversity | None — both on GCP |
 | DVN cost per msg | ~$0.007 |
 | Liveness risk | Higher — either DVN going down blocks all messages |
 
-### Option B: Strong Security (2 Required + 1-of-2 Optional)
+#### Option B: Strong Security (2 Required + 1-of-2 Optional)
 
 ```
 Required: [LayerZero Labs, Nethermind]
@@ -303,13 +368,13 @@ Threshold: 2 Required + 1-of-2 Optional
 
 | Metric | Assessment |
 |--------|-----------|
-| Security | Strong — 3 of 4 must agree (2 required + 1 optional) |
-| Client diversity | Strong (TS, Go, custom×2) |
-| Cloud diversity | Strong (GCP, AWS, OTC, multi-AZ) |
+| Security | ~~Strong~~ → **Moderate** — if LZ+Nethermind compromised via shared admin keys, security degrades to 1-of-2 optional only |
+| Client diversity | Yes — Gasolina + Canary client |
+| Cloud diversity | Strong (GCP, AWS, OTC) |
 | DVN cost per msg | ~$0.013 |
 | Liveness risk | Low — optional set provides redundancy |
 
-### Option C: Maximum Security (2 Required + 2-of-3 Optional)
+#### Option C: Maximum Security (2 Required + 2-of-3 Optional)
 
 ```
 Required: [LayerZero Labs, Nethermind]
@@ -319,13 +384,13 @@ Threshold: 2 Required + 2-of-3 Optional
 
 | Metric | Assessment |
 |--------|-----------|
-| Security | Maximum — 4 of 5 must agree |
-| Client diversity | Strongest |
-| Cloud diversity | Strongest (GCP, AWS, OTC, Fidelity, multi-AZ) |
+| Security | ~~Maximum~~ → **Strong** — if LZ+Nethermind compromised via shared admin keys, security degrades to 2-of-3 optional only |
+| Client diversity | Yes — Gasolina + Canary client |
+| Cloud diversity | Strongest (GCP, AWS, OTC, Fidelity infra) |
 | DVN cost per msg | ~$0.016 |
 | Liveness risk | Lowest — multiple layers of redundancy |
 
-### Option D: Balanced (3 Required)
+#### Option D: Balanced (3 Required)
 
 ```
 Required: [LayerZero Labs, Canary, Nethermind]
@@ -335,13 +400,13 @@ Threshold: 3-of-3
 
 | Metric | Assessment |
 |--------|-----------|
-| Security | Strong — all 3 must agree |
-| Client diversity | Strong (TS, Go, custom) |
-| Cloud diversity | Good (GCP, AWS, multi-AZ) |
+| Security | ~~Strong~~ → **Moderate** — Canary is independent but LZ+Nethermind share admin overlap; a compromise of both means only Canary blocks the forged message |
+| Client diversity | Yes — Gasolina + Canary client |
+| Cloud diversity | Partial (GCP + AWS) — LZ Labs and Nethermind both on GCP |
 | DVN cost per msg | ~$0.010 |
 | Liveness risk | Moderate — any single DVN outage blocks messages |
 
-### Option E: Balanced + Resilience (3 Required + 1-of-2 Optional)
+#### Option E: Balanced + Resilience (3 Required + 1-of-2 Optional)
 
 ```
 Required: [LayerZero Labs, Canary, Nethermind]
@@ -351,11 +416,13 @@ Threshold: 3 Required + 1-of-2 Optional
 
 | Metric | Assessment |
 |--------|-----------|
-| Security | Very strong — 4 of 5 must agree |
-| Client diversity | Strongest |
-| Cloud diversity | Strongest |
+| Security | ~~Very strong~~ → **Strong** — same LZ+Nethermind admin overlap concern in required set |
+| Client diversity | Yes — Gasolina + Canary client |
+| Cloud diversity | Strongest (GCP, AWS, OTC, Fidelity infra) |
 | DVN cost per msg | ~$0.016 |
 | Liveness risk | Moderate (required set) but optional adds audit trail |
+
+</details>
 
 ---
 
