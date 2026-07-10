@@ -78,7 +78,7 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     }
 
     /**
-     * @dev Enforces pausability on inbound messages and emits BridgeReceived for indexing.
+     * @dev Enforces pausability on inbound messages.
      */
     function _lzReceive(
         Origin calldata _origin,
