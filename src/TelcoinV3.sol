@@ -122,6 +122,12 @@ contract TelcoinV3 is IERC20Mintable, EIP3009, ERC20Permit, Pausable, Roles, Acc
      * @dev Accepts any signature format — EOA (65 bytes packed r,s,v) or multi-sig blobs
      *      (Gnosis Safe concatenated signatures). Uses SignatureChecker which routes to
      *      ECDSA.recover for EOAs or IERC1271.isValidSignature for contract wallets.
+     *
+     *      Accounts with code — including EIP-7702 delegated EOAs — are validated exclusively
+     *      via ERC-1271; raw ECDSA signatures from them are never accepted. This is intentional:
+     *      a delegated account may have rotated or disabled its root key, or enforce policies
+     *      through its delegate, and an ECDSA fallback would bypass them. Delegates that do not
+     *      implement ERC-1271 cannot use permit.
      */
     function permit(
         address owner_,
