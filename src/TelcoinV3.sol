@@ -9,7 +9,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
-import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 import {EIP3009} from "./helpers/EIP3009.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
