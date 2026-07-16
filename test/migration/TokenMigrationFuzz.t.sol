@@ -418,4 +418,42 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // Migration contract holds no TelcoinV3
         assertEq(telcoinV3.balanceOf(address(migration)), 0, "Migration contract should hold no TelcoinV3");
     }
+
+    /**
+     * Fuzz test: Once old tokens are withdrawn, migration can never be reopened —
+     * setMigrationExpiry and migrate revert for any timestamp and any proposed expiry.
+     */
+    function testFuzz_ClosedMigrationCannotReopen(uint256 amount, uint256 warpAfter, uint256 newExpiry) public {
+        amount = bound(amount, 1, MAX_OLD_TOKEN_AMOUNT);
+
+        address user = address(uint160(uint256(keccak256("closure_user"))));
+        deal(address(oldToken), user, amount);
+
+        vm.startPrank(user);
+        oldToken.approve(address(migration), amount);
+        migration.migrate();
+        vm.stopPrank();
+
+        // conclude migration and withdraw the escrow at some time past the unlock
+        uint256 unlockTime = migration.migrationExpiry() + migration.withdrawalDelay();
+        warpAfter = bound(warpAfter, 0, 100 * 365 days);
+        vm.warp(unlockTime + warpAfter);
+
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+        assertTrue(migration.migrationClosed(), "Migration should be closed after withdrawal");
+
+        // any attempt to move the expiry reverts, regardless of the proposed value
+        newExpiry = bound(newExpiry, migration.migrationExpiry(), type(uint256).max);
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.setMigrationExpiry(newExpiry);
+
+        // re-migrating the withdrawn tokens reverts
+        vm.startPrank(owner);
+        oldToken.approve(address(migration), amount);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
+        vm.stopPrank();
+    }
 }

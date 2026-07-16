@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {TelcoinV3} from "../../src/TelcoinV3.sol";
 import {TokenMigration} from "../../src/TokenMigration.sol";
 import {Create3Utils} from "../utils/Create3Utils.sol";
@@ -507,5 +508,132 @@ contract TokenMigrationTest is Test, Roles {
         vm.prank(owner);
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
         migration.withdrawOldTokens(address(0));
+    }
+
+    // -----------------------
+    // Migration Closure Tests
+    // -----------------------
+
+    /// @dev Migration is not closed at deployment.
+    function test_MigrationClosed_initiallyFalse() public view {
+        assertFalse(migration.migrationClosed());
+    }
+
+    /// @dev Withdrawing escrowed old tokens permanently closes migration and emits MigrationClosed.
+    function test_WithdrawOldTokens_closesMigration() public {
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+
+        vm.expectEmit(true, true, true, true);
+        emit TokenMigration.MigrationClosed();
+
+        vm.prank(owner);
+        migration.withdrawOldTokens(user2);
+
+        assertTrue(migration.migrationClosed());
+    }
+
+    /// @dev Once closed, the expiry can never be moved into the future to reopen migration.
+    function test_SetMigrationExpiry_revertsWhenClosed() public {
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.setMigrationExpiry(block.timestamp + 365 days);
+    }
+
+    /// @dev Once closed, migrate() reverts regardless of timing.
+    function test_Migrate_revertsWhenClosed() public {
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+
+        vm.startPrank(user2);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
+        vm.stopPrank();
+    }
+
+    /// @dev Full recycle-attack scenario (Spearbit finding): owner withdraws escrowed old tokens
+    ///      after expiry + delay, then attempts to extend the expiry and re-migrate the withdrawn
+    ///      tokens to mint additional new tokens. Both steps must revert.
+    function test_RecycleAttack_prevented() public {
+        // user1 migrates; old tokens are escrowed and new tokens minted 1:1
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        uint256 supplyAfterMigration = telcoinV3.totalSupply();
+
+        // conclusion: expiry + delay pass, owner withdraws the escrow to itself
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+        assertEq(oldToken.balanceOf(owner), INITIAL_USER_BAL);
+
+        // attack step 1: reopen migration by extending expiry — must revert
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.setMigrationExpiry(block.timestamp + 365 days);
+
+        // attack step 2: re-migrate the withdrawn old tokens — must revert
+        vm.startPrank(owner);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
+        vm.stopPrank();
+
+        // no additional new tokens were minted
+        assertEq(telcoinV3.totalSupply(), supplyAfterMigration);
+    }
+
+    /// @dev Old tokens sent directly to the contract after closure can still be withdrawn,
+    ///      and MigrationClosed is not emitted a second time.
+    function test_WithdrawOldTokens_afterClosureWithdrawsDonations() public {
+        vm.startPrank(user1);
+        oldToken.approve(address(migration), INITIAL_USER_BAL);
+        migration.migrate();
+        vm.stopPrank();
+
+        vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+        assertTrue(migration.migrationClosed());
+
+        // user2 sends old tokens directly to the contract after closure
+        vm.prank(user2);
+        oldToken.transfer(address(migration), INITIAL_USER_BAL);
+
+        vm.recordLogs();
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+
+        // withdrawal succeeded and migration remains closed
+        assertEq(oldToken.balanceOf(address(migration)), 0);
+        assertTrue(migration.migrationClosed());
+
+        // MigrationClosed must not be re-emitted on subsequent withdrawals
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i = 0; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != TokenMigration.MigrationClosed.selector);
+        }
     }
 }

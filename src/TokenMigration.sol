@@ -32,11 +32,15 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     /// revert if block.timestamp is beyond migrationExpiry.
     uint256 public migrationExpiry;
 
+    /// @notice Set permanently once escrowed old tokens are withdrawn.
+    bool public migrationClosed;
+
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
     event MigrationExpirySet(uint256 oldExpiry, uint256 newExpiry);
     event OldTokensWithdrawn(address indexed to, uint256 amount);
+    event MigrationClosed();
 
     // errors
     error InvalidAmount();
@@ -80,7 +84,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      * @return amountNewToken Amount of tokens minted in response to migration
      */
     function migrate() external nonReentrant whenNotPaused returns (uint256 amountNewToken) {
-        if (block.timestamp >= migrationExpiry) revert MigrationConcluded();
+        if (migrationClosed || block.timestamp >= migrationExpiry) revert MigrationConcluded();
         // user must have sufficient balance
         uint256 userBalance = oldToken.balanceOf(msg.sender);
         if (userBalance == 0) revert InvalidAmount();
@@ -99,6 +103,8 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     /**
      * @notice Withdraw all escrowed old tokens after the withdrawal delay has passed.
      * @dev Can only be called by the owner after migrationExpiry + withdrawalDelay.
+     *      Permanently closes migration so withdrawn old tokens can never be recycled
+     *      through migrate() to mint additional new tokens.
      * @param destination The address to send the escrowed old tokens
      */
     function withdrawOldTokens(address destination) external onlyOwner {
@@ -108,16 +114,23 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
         uint256 balance = oldToken.balanceOf(address(this));
         if (balance == 0) revert InvalidAmount();
 
+        if (!migrationClosed) {
+            migrationClosed = true;
+            emit MigrationClosed();
+        }
+
         oldToken.safeTransfer(destination, balance);
         emit OldTokensWithdrawn(destination, balance);
     }
 
     /**
      * @dev Allows the admin to set the migration expiry date - when migration will be concluded.
-     * @notice New migration timestamp must be greater than the current expiry
+     * @notice New migration timestamp must be greater than the current expiry. Reverts once
+     * migration has been permanently closed by a withdrawal of the escrowed old tokens.
      * @param newMigrationExpiry New timestamp when migrations will be concluded
      */
     function setMigrationExpiry(uint256 newMigrationExpiry) external onlyOwner {
+        if (migrationClosed) revert MigrationConcluded();
         if (newMigrationExpiry == 0 || migrationExpiry > newMigrationExpiry) revert InvalidExpiry();
         emit MigrationExpirySet(migrationExpiry, newMigrationExpiry);
         migrationExpiry = newMigrationExpiry;
