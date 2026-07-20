@@ -246,4 +246,26 @@ contract NativeBridgeTest is BaseSetup {
         nativeBridge.grantRole(PAUSER_ROLE, someBot);
         assertTrue(nativeBridge.hasRole(PAUSER_ROLE, someBot));
     }
+
+    /// @notice The LayerZero endpoint delegate tracks ownership: it starts as the initial owner
+    ///         and rotates to the new owner on acceptOwnership, so a former owner cannot retain
+    ///         endpoint-configuration authority.
+    function test_DelegateFollowsOwnership() public {
+        address newOwner = makeAddr("newOwner");
+
+        // baseline: delegate is the initial owner (set at construction)
+        assertEq(endpointTN.delegates(address(nativeBridge)), owner);
+
+        vm.prank(owner);
+        nativeBridge.transferOwnership(newOwner);
+
+        // pending transfer must not move the delegate yet
+        assertEq(endpointTN.delegates(address(nativeBridge)), owner);
+
+        vm.prank(newOwner);
+        nativeBridge.acceptOwnership();
+
+        // delegate now tracks the new owner; the former owner is no longer endpoint-authorized
+        assertEq(endpointTN.delegates(address(nativeBridge)), newOwner);
+    }
 }

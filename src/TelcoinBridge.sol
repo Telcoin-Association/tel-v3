@@ -154,6 +154,18 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable, PauseRoles
     }
 
     /**
+     * @notice Completes the two-step ownership transfer and rotates the LayerZero endpoint
+     *         delegate to the new owner.
+     * @dev Without this, a former owner remains the endpoint delegate after handover and can
+     *      still call endpoint configuration methods (e.g. rewrite the receive ULN to self-attest
+     *      forged packets and mint unbacked TEL).
+     */
+    function acceptOwnership() public override {
+        super.acceptOwnership();
+        endpoint.setDelegate(owner());
+    }
+
+    /**
      * @dev Binds DEFAULT_ADMIN_ROLE to ownership so the two authority systems cannot silently
      *      diverge. On every ownership move (including acceptOwnership) the incoming owner is
      *      granted DEFAULT_ADMIN_ROLE and the outgoing owner has it revoked, atomically. Uses the

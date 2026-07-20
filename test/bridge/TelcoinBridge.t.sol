@@ -334,6 +334,28 @@ contract TelcoinBridgeTest is BaseSetup {
         assertTrue(bridgeA.hasRole(PAUSER_ROLE, someBot));
     }
 
+    /// @notice The LayerZero endpoint delegate tracks ownership: it starts as the initial owner
+    ///         and rotates to the new owner on acceptOwnership, so a former owner cannot retain
+    ///         endpoint-configuration authority.
+    function test_DelegateFollowsOwnership() public {
+        address newOwner = makeAddr("newOwner");
+
+        // baseline: delegate is the initial owner (set at construction)
+        assertEq(endpointA.delegates(address(bridgeA)), owner);
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        // pending transfer must not move the delegate yet
+        assertEq(endpointA.delegates(address(bridgeA)), owner);
+
+        vm.prank(newOwner);
+        bridgeA.acceptOwnership();
+
+        // delegate now tracks the new owner; the former owner is no longer endpoint-authorized
+        assertEq(endpointA.delegates(address(bridgeA)), newOwner);
+    }
+
     // ----------------------
     // MintBurnWrapper Tests
     // ----------------------
