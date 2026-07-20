@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {MintBurnWrapper} from "../../src/MintBurnWrapper.sol";
 import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
@@ -114,10 +115,12 @@ contract TelcoinBridgeTest is BaseSetup {
         assertTrue(bridgeA.paused());
     }
 
-    /// @notice pause reverts when called by a non-owner.
-    function test_Pause_RevertNotOwner() public {
+    /// @notice pause reverts when called by an address without PAUSER_ROLE.
+    function test_Pause_RevertNotPauser() public {
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, PAUSER_ROLE)
+        );
         bridgeA.pause();
     }
 
@@ -130,14 +133,64 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.stopPrank();
     }
 
-    /// @notice unpause reverts when called by a non-owner.
-    function test_Unpause_RevertNotOwner() public {
+    /// @notice unpause reverts when called by an address without UNPAUSER_ROLE.
+    function test_Unpause_RevertNotUnpauser() public {
         vm.prank(owner);
         bridgeA.pause();
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, UNPAUSER_ROLE)
+        );
         bridgeA.unpause();
+    }
+
+    /// @notice A dedicated pauser can pause but not unpause; a dedicated unpauser can unpause but not pause.
+    function test_PauseUnpause_roleSeparation() public {
+        address pauserBot = makeAddr("pauserBot");
+        address unpauserGov = makeAddr("unpauserGov");
+
+        vm.startPrank(owner);
+        bridgeA.grantRole(PAUSER_ROLE, pauserBot);
+        bridgeA.grantRole(UNPAUSER_ROLE, unpauserGov);
+        vm.stopPrank();
+
+        // pauser can halt the bridge without owning it
+        vm.prank(pauserBot);
+        bridgeA.pause();
+        assertTrue(bridgeA.paused());
+
+        // pauser cannot unpause
+        vm.prank(pauserBot);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, pauserBot, UNPAUSER_ROLE)
+        );
+        bridgeA.unpause();
+
+        // unpauser can resume
+        vm.prank(unpauserGov);
+        bridgeA.unpause();
+        assertFalse(bridgeA.paused());
+
+        // unpauser cannot pause
+        vm.prank(unpauserGov);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, unpauserGov, PAUSER_ROLE)
+        );
+        bridgeA.pause();
+    }
+
+    /// @notice A role holder cannot renounce; admin cannot self-revoke its own admin role.
+    function test_AccessControl_renounceAndSelfRevokeGuards() public {
+        bytes32 adminRole = bridgeA.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        vm.expectRevert(TelcoinBridge.CannotRenounceRole.selector);
+        bridgeA.renounceRole(PAUSER_ROLE, owner);
+
+        vm.prank(owner);
+        vm.expectRevert(TelcoinBridge.CannotRenounceRole.selector);
+        bridgeA.revokeRole(adminRole, owner);
     }
 
     /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge to a specified address.

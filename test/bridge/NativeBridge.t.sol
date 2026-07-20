@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {NativeBridge} from "../../src/NativeBridge.sol";
 
 /**
@@ -73,10 +74,12 @@ contract NativeBridgeTest is BaseSetup {
         assertTrue(nativeBridge.paused());
     }
 
-    /// @notice pause reverts when called by a non-owner.
-    function test_Pause_RevertNotOwner() public {
+    /// @notice pause reverts when called by an address without PAUSER_ROLE.
+    function test_Pause_RevertNotPauser() public {
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, PAUSER_ROLE)
+        );
         nativeBridge.pause();
     }
 
@@ -89,14 +92,60 @@ contract NativeBridgeTest is BaseSetup {
         vm.stopPrank();
     }
 
-    /// @notice unpause reverts when called by a non-owner.
-    function test_Unpause_RevertNotOwner() public {
+    /// @notice unpause reverts when called by an address without UNPAUSER_ROLE.
+    function test_Unpause_RevertNotUnpauser() public {
         vm.prank(owner);
         nativeBridge.pause();
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, UNPAUSER_ROLE)
+        );
         nativeBridge.unpause();
+    }
+
+    /// @notice A dedicated pauser can pause but not unpause; a dedicated unpauser can unpause but not pause.
+    function test_PauseUnpause_roleSeparation() public {
+        address pauserBot = makeAddr("pauserBot");
+        address unpauserGov = makeAddr("unpauserGov");
+
+        vm.startPrank(owner);
+        nativeBridge.grantRole(PAUSER_ROLE, pauserBot);
+        nativeBridge.grantRole(UNPAUSER_ROLE, unpauserGov);
+        vm.stopPrank();
+
+        vm.prank(pauserBot);
+        nativeBridge.pause();
+        assertTrue(nativeBridge.paused());
+
+        vm.prank(pauserBot);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, pauserBot, UNPAUSER_ROLE)
+        );
+        nativeBridge.unpause();
+
+        vm.prank(unpauserGov);
+        nativeBridge.unpause();
+        assertFalse(nativeBridge.paused());
+
+        vm.prank(unpauserGov);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, unpauserGov, PAUSER_ROLE)
+        );
+        nativeBridge.pause();
+    }
+
+    /// @notice A role holder cannot renounce; admin cannot self-revoke its own admin role.
+    function test_AccessControl_renounceAndSelfRevokeGuards() public {
+        bytes32 adminRole = nativeBridge.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        vm.expectRevert(NativeBridge.CannotRenounceRole.selector);
+        nativeBridge.renounceRole(PAUSER_ROLE, owner);
+
+        vm.prank(owner);
+        vm.expectRevert(NativeBridge.CannotRenounceRole.selector);
+        nativeBridge.revokeRole(adminRole, owner);
     }
 
     /// @notice The bridge accepts native ETH sent directly, increasing the reserve and emitting ReserveFunded.

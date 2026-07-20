@@ -69,6 +69,12 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // set minter role on TelcoinV3
         vm.prank(owner);
         telcoinV3.grantRole(MINTER_ROLE, address(migration));
+
+        // grant pause roles post-deploy (mirrors the deployment configuration step)
+        vm.startPrank(owner);
+        migration.grantRole(PAUSER_ROLE, owner);
+        migration.grantRole(UNPAUSER_ROLE, owner);
+        vm.stopPrank();
     }
 
     /**

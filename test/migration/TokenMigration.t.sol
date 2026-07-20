@@ -9,7 +9,7 @@ import {Create3Utils} from "../utils/Create3Utils.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Roles} from "../../src/helpers/Roles.sol";
 
 contract TokenMigrationTest is Test, Roles {
@@ -81,6 +81,12 @@ contract TokenMigrationTest is Test, Roles {
         vm.prank(owner);
         telcoinV3.grantRole(MINTER_ROLE, address(migration));
 
+        // grant pause roles post-deploy (mirrors the deployment configuration step)
+        vm.startPrank(owner);
+        migration.grantRole(PAUSER_ROLE, owner);
+        migration.grantRole(UNPAUSER_ROLE, owner);
+        vm.stopPrank();
+
         // fund accounts
         deal(address(oldToken), user1, INITIAL_USER_BAL);
         deal(address(oldToken), user2, INITIAL_USER_BAL);
@@ -100,6 +106,12 @@ contract TokenMigrationTest is Test, Roles {
     function test_Constructor_RevertsWhenNewTokenZero() public {
         vm.expectRevert(TokenMigration.ZeroAddress.selector);
         new TokenMigration(address(oldToken), address(0), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY);
+    }
+
+    /// @dev Verifies constructor reverts when _admin is the zero address.
+    function test_Constructor_RevertsWhenAdminZero() public {
+        vm.expectRevert(TokenMigration.ZeroAddress.selector);
+        new TokenMigration(address(oldToken), address(telcoinV3), address(0), MIGRATION_DURATION, WITHDRAWAL_DELAY);
     }
 
     /// @dev Verifies constructor reverts when _oldToken and _telcoinV3 are the same address.
@@ -251,11 +263,15 @@ contract TokenMigrationTest is Test, Roles {
         migration.setMigrationExpiry(currentExpiry - 1);
     }
 
-    /// @dev Verifies setMigrationExpiry can only be called by the owner.
-    function test_SetMigrationExpiry_revertsIfNonOwner() public {
+    /// @dev Verifies setMigrationExpiry can only be called by the admin.
+    function test_SetMigrationExpiry_revertsIfNonAdmin() public {
         uint256 expiry = migration.migrationExpiry();
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
+
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, adminRole)
+        );
         migration.setMigrationExpiry(expiry + 1 days);
     }
 
@@ -290,59 +306,98 @@ contract TokenMigrationTest is Test, Roles {
         assertEq(telcoinV3.balanceOf(user1), migration.getAmountOut(INITIAL_USER_BAL));
     }
 
-    // ----------------------
-    // Ownership Safety Tests
-    // ----------------------
+    // --------------------------
+    // Access Control Safety Tests
+    // --------------------------
 
-    /// @dev transferOwnership sets pendingOwner but does NOT change owner yet (two-step).
-    function test_TransferOwnership_SetsPendingOwner() public {
-        address newOwner = makeAddr("newOwner");
+    /// @dev Constructor grants only DEFAULT_ADMIN_ROLE; pause roles are granted post-deploy.
+    function test_AccessControl_initialRoles() public {
+        TokenMigration fresh =
+            new TokenMigration(address(oldToken), address(telcoinV3), owner, MIGRATION_DURATION, WITHDRAWAL_DELAY);
 
-        vm.prank(owner);
-        migration.transferOwnership(newOwner);
+        assertTrue(fresh.hasRole(fresh.DEFAULT_ADMIN_ROLE(), owner));
+        assertFalse(fresh.hasRole(PAUSER_ROLE, owner));
+        assertFalse(fresh.hasRole(UNPAUSER_ROLE, owner));
 
-        assertEq(migration.pendingOwner(), newOwner);
-        assertEq(migration.owner(), owner); // owner unchanged until accepted
+        // admin grants the pause roles as a configuration step
+        vm.startPrank(owner);
+        fresh.grantRole(PAUSER_ROLE, owner);
+        fresh.grantRole(UNPAUSER_ROLE, owner);
+        vm.stopPrank();
+
+        assertTrue(fresh.hasRole(PAUSER_ROLE, owner));
+        assertTrue(fresh.hasRole(UNPAUSER_ROLE, owner));
     }
 
-    /// @dev Ownership transfer completes only after the pending owner calls acceptOwnership().
-    function test_TransferOwnership_AcceptOwnership() public {
-        address newOwner = makeAddr("newOwner");
-
+    /// @dev renounceRole always reverts to prevent accidentally bricking the migration contract.
+    function test_RenounceRole_Reverts() public {
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
         vm.prank(owner);
-        migration.transferOwnership(newOwner);
-
-        vm.prank(newOwner);
-        migration.acceptOwnership();
-
-        assertEq(migration.owner(), newOwner);
-        assertEq(migration.pendingOwner(), address(0));
+        vm.expectRevert(TokenMigration.CannotRenounceRole.selector);
+        migration.renounceRole(adminRole, owner);
     }
 
-    /// @dev A non-pending-owner cannot call acceptOwnership().
-    function test_TransferOwnership_RevertNotPendingOwner() public {
-        address newOwner = makeAddr("newOwner");
-
+    /// @dev An admin cannot bypass the renounce ban by revoking its own DEFAULT_ADMIN_ROLE.
+    function test_RevokeRole_revertsAdminSelfRevoke() public {
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
         vm.prank(owner);
-        migration.transferOwnership(newOwner);
-
-        vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-        migration.acceptOwnership();
+        vm.expectRevert(TokenMigration.CannotRenounceRole.selector);
+        migration.revokeRole(adminRole, owner);
     }
 
-    /// @dev Only the current owner can initiate a transfer.
-    function test_TransferOwnership_RevertNotOwner() public {
-        vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
-        migration.transferOwnership(user1);
+    /// @dev Admin handover: grant the new admin, then the new admin revokes the old one.
+    function test_AdminHandover() public {
+        address newAdmin = makeAddr("newAdmin");
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        migration.grantRole(adminRole, newAdmin);
+
+        vm.prank(newAdmin);
+        migration.revokeRole(adminRole, owner);
+
+        assertFalse(migration.hasRole(adminRole, owner));
+        assertTrue(migration.hasRole(adminRole, newAdmin));
+
+        // new admin controls admin-gated functions
+        uint256 newExpiry = migration.migrationExpiry() + 30 days;
+        vm.prank(newAdmin);
+        migration.setMigrationExpiry(newExpiry);
+        assertEq(migration.migrationExpiry(), newExpiry);
     }
 
-    /// @dev renounceOwnership always reverts to prevent accidentally bricking the migration contract.
-    function test_RenounceOwnership_Reverts() public {
-        vm.prank(owner);
-        vm.expectRevert(TokenMigration.CannotRenounceOwnership.selector);
-        migration.renounceOwnership();
+    /// @dev A dedicated pauser can pause but not unpause, and holds no admin authority.
+    function test_PauseUnpause_roleSeparation() public {
+        address pauserBot = makeAddr("pauserBot");
+        address unpauserGov = makeAddr("unpauserGov");
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
+
+        vm.startPrank(owner);
+        migration.grantRole(PAUSER_ROLE, pauserBot);
+        migration.grantRole(UNPAUSER_ROLE, unpauserGov);
+        vm.stopPrank();
+
+        vm.prank(pauserBot);
+        migration.pause();
+        assertTrue(migration.paused());
+
+        // pauser cannot unpause
+        vm.prank(pauserBot);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, pauserBot, UNPAUSER_ROLE)
+        );
+        migration.unpause();
+
+        // pauser holds no admin authority
+        vm.prank(pauserBot);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, pauserBot, adminRole)
+        );
+        migration.withdrawOldTokens(pauserBot);
+
+        vm.prank(unpauserGov);
+        migration.unpause();
+        assertFalse(migration.paused());
     }
 
     // ----------------------------
@@ -370,17 +425,27 @@ contract TokenMigrationTest is Test, Roles {
         migration.migrate();
     }
 
-    /// @dev Verifies pause(), unpause(), and recoverERC20() revert for non-owners.
-    function test_OnlyOwnerFunctions() public {
+    /// @dev Verifies pause(), unpause(), and recoverERC20() revert for unauthorized callers.
+    function test_PermissionedFunctions_revertUnauthorized() public {
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
+        bytes32 pauserRole = migration.PAUSER_ROLE();
+        bytes32 unpauserRole = migration.UNPAUSER_ROLE();
+
         vm.startPrank(user1);
 
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, pauserRole)
+        );
         migration.pause();
 
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, unpauserRole)
+        );
         migration.unpause();
 
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, adminRole)
+        );
         migration.recoverERC20(user1, OLDTOKEN_ADDRESS, INITIAL_USER_BAL);
 
         vm.stopPrank();
@@ -492,12 +557,15 @@ contract TokenMigrationTest is Test, Roles {
         migration.withdrawOldTokens(user2);
     }
 
-    /// @dev Verifies withdrawOldTokens reverts when called by non-owner.
-    function test_WithdrawOldTokens_revertsIfNonOwner() public {
+    /// @dev Verifies withdrawOldTokens reverts when called by non-admin.
+    function test_WithdrawOldTokens_revertsIfNonAdmin() public {
         vm.warp(migration.migrationExpiry() + migration.withdrawalDelay());
+        bytes32 adminRole = migration.DEFAULT_ADMIN_ROLE();
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, adminRole)
+        );
         migration.withdrawOldTokens(user2);
     }
 

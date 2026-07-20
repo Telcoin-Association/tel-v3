@@ -7,9 +7,13 @@ import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMi
 import {Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PauseRoles} from "./helpers/Roles.sol";
 
 /**
  * @title TelcoinBridge
@@ -28,7 +32,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
  *      18 local decimals. Amounts are rounded to the nearest 1e-6 TEL (dust) before send.
  *      Max transferable per message: uint64.max * 1e12 ~= 18.4 trillion TEL.
  */
-contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
+contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable, PauseRoles, AccessControlEnumerable {
     using SafeERC20 for IERC20;
     using OFTMsgCodec for bytes;
     using OFTMsgCodec for bytes32;
@@ -36,23 +40,27 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
     // ~ Errors ~
 
     error CannotRenounceOwnership();
+    error CannotRenounceRole();
     error ZeroAddress();
     error ZeroAmount();
 
     // ~ Constructor ~
 
     /**
+     * @dev Constructor.
      * @param _token The TelcoinV3 token address
      * @param _minterBurner The MintBurnWrapper address (holds MINTER_ROLE/BURNER_ROLE on TelcoinV3)
      * @param _endpoint The local LayerZero endpoint address
-     * @param _delegate The delegate/owner address for OApp configuration
+     * @param _delegate The delegate/owner address for OApp configuration (receives DEFAULT_ADMIN_ROLE)
      */
     constructor(
         address _token,
         IMintableBurnable _minterBurner,
         address _endpoint,
         address _delegate
-    ) MintBurnOFTAdapter(_token, _minterBurner, _endpoint, _delegate) Ownable(_delegate) {}
+    ) MintBurnOFTAdapter(_token, _minterBurner, _endpoint, _delegate) Ownable(_delegate) {
+        _grantRole(DEFAULT_ADMIN_ROLE, _delegate);
+    }
 
     // ~ OFTCore Overrides ~
 
@@ -101,9 +109,32 @@ contract TelcoinBridge is MintBurnOFTAdapter, Ownable2Step, Pausable {
         IERC20(_token).safeTransfer(_to, _amount);
     }
 
-    function pause() external onlyOwner { _pause(); }
+    /// @notice Pauses the bridge. Separated from owner so a low-latency incident responder can
+    ///         halt the bridge without holding configuration or rescue authority.
+    function pause() external onlyRole(PAUSER_ROLE) { _pause(); }
 
-    function unpause() external onlyOwner { _unpause(); }
+    /// @notice Unpauses the bridge. High-trust action — resuming flow during an active incident
+    ///         reopens the risk, so it is held by governance, separate from PAUSER_ROLE.
+    function unpause() external onlyRole(UNPAUSER_ROLE) { _unpause(); }
+
+    // ~ Access Control ~
+
+    /**
+     * @notice Disabled — roles may only be revoked by an admin, never self-renounced.
+     */
+    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
+        revert CannotRenounceRole();
+    }
+
+    /**
+     * @notice Revoke a role, except an admin removing its own DEFAULT_ADMIN_ROLE.
+     * @dev Mirrors the TelcoinV3/MigrationVault guard: prevents the sole admin from
+     *      permanently disabling role administration via self-revocation.
+     */
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
+        if (role == DEFAULT_ADMIN_ROLE && account == msg.sender) revert CannotRenounceRole();
+        super.revokeRole(role, account);
+    }
 
     // ~ Ownership ~
 

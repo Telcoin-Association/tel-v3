@@ -67,6 +67,14 @@ contract BaseSetup is Test, Roles {
         // Deploy NativeBridge on TelcoinNetwork
         nativeBridge = new NativeBridge(address(endpointTN), owner);
 
+        // Grant pause roles post-deploy (mirrors the deployment configuration step)
+        bridgeA.grantRole(PAUSER_ROLE, owner);
+        bridgeA.grantRole(UNPAUSER_ROLE, owner);
+        bridgeB.grantRole(PAUSER_ROLE, owner);
+        bridgeB.grantRole(UNPAUSER_ROLE, owner);
+        nativeBridge.grantRole(PAUSER_ROLE, owner);
+        nativeBridge.grantRole(UNPAUSER_ROLE, owner);
+
         // Wire satellite bridges to each other and to NativeBridge
         bridgeA.setPeer(EID_B, _addressToBytes32(address(bridgeB)));
         bridgeA.setPeer(EID_TN, _addressToBytes32(address(nativeBridge)));
