@@ -315,4 +315,44 @@ contract TelcoinV3Test is TelcoinV3BaseSetup {
         vm.expectRevert(TelcoinV3.CannotRenounceRole.selector);
         token.renounceRole(adminRole, owner);
     }
+
+    /// @notice An admin cannot bypass the renounce ban by revoking its own DEFAULT_ADMIN_ROLE.
+    function test_RevertIf_AdminSelfRevokesAdminRole() public {
+        bytes32 adminRole = token.DEFAULT_ADMIN_ROLE();
+        vm.prank(owner);
+        vm.expectRevert(TelcoinV3.CannotRenounceRole.selector);
+        token.revokeRole(adminRole, owner);
+    }
+
+    /// @notice An admin may still revoke its own non-admin roles (recoverable via re-grant).
+    function test_AdminCanSelfRevokeNonAdminRole() public {
+        vm.startPrank(owner);
+        token.grantRole(MINTER_ROLE, owner);
+        assertTrue(token.hasRole(MINTER_ROLE, owner));
+
+        token.revokeRole(MINTER_ROLE, owner);
+        assertFalse(token.hasRole(MINTER_ROLE, owner));
+        vm.stopPrank();
+    }
+
+    /// @notice Admin handover: grant the new admin, then the new admin revokes the old one.
+    function test_AdminHandover() public {
+        address newAdmin = makeAddr("newAdmin");
+        bytes32 adminRole = token.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        token.grantRole(adminRole, newAdmin);
+
+        // new admin revokes the old admin (revoker != target, so the guard permits it)
+        vm.prank(newAdmin);
+        token.revokeRole(adminRole, owner);
+
+        assertFalse(token.hasRole(adminRole, owner));
+        assertTrue(token.hasRole(adminRole, newAdmin));
+
+        // new admin retains full role administration
+        vm.prank(newAdmin);
+        token.grantRole(MINTER_ROLE, user);
+        assertTrue(token.hasRole(MINTER_ROLE, user));
+    }
 }

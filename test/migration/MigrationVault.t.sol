@@ -648,6 +648,55 @@ contract MigrationVaultTest is Test, Roles {
         vault.renounceRole(unpauserRole, unpauser);
     }
 
+    // -----------------
+    // Revoke Role Tests
+    // -----------------
+
+    /// @dev An admin cannot bypass the renounce ban by revoking its own DEFAULT_ADMIN_ROLE.
+    function test_revokeRole_revertsAdminSelfRevoke() public {
+        vm.prank(admin);
+        vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
+        vault.revokeRole(defaultAdminRole, admin);
+    }
+
+    /// @dev An admin may still revoke its own non-admin roles (recoverable via re-grant).
+    function test_revokeRole_adminCanSelfRevokeNonAdminRole() public {
+        vm.startPrank(admin);
+        vault.grantRole(pauserRole, admin);
+        assertTrue(vault.hasRole(pauserRole, admin));
+
+        vault.revokeRole(pauserRole, admin);
+        assertFalse(vault.hasRole(pauserRole, admin));
+        vm.stopPrank();
+    }
+
+    /// @dev An admin can still revoke roles from other holders.
+    function test_revokeRole_adminCanRevokeOthers() public {
+        vm.prank(admin);
+        vault.revokeRole(pauserRole, pauser);
+        assertFalse(vault.hasRole(pauserRole, pauser));
+    }
+
+    /// @dev Admin handover: grant the new admin, then the new admin revokes the old one.
+    function test_revokeRole_adminHandover() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        vm.prank(admin);
+        vault.grantRole(defaultAdminRole, newAdmin);
+
+        // new admin revokes the old admin (revoker != target, so the guard permits it)
+        vm.prank(newAdmin);
+        vault.revokeRole(defaultAdminRole, admin);
+
+        assertFalse(vault.hasRole(defaultAdminRole, admin));
+        assertTrue(vault.hasRole(defaultAdminRole, newAdmin));
+
+        // new admin retains full role administration
+        vm.prank(newAdmin);
+        vault.grantRole(pauserRole, newAdmin);
+        assertTrue(vault.hasRole(pauserRole, newAdmin));
+    }
+
     // ---------------
     // Constants Tests
     // ---------------

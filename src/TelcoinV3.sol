@@ -162,6 +162,18 @@ contract TelcoinV3 is IERC20Mintable, EIP3009, ERC20Permit, Pausable, Roles, Acc
         revert CannotRenounceRole();
     }
 
+    /**
+     * @notice Revoke a role, except an admin removing its own DEFAULT_ADMIN_ROLE.
+     * @dev Closes the renounceRole bypass: DEFAULT_ADMIN_ROLE administers itself, so a sole
+     *      admin could otherwise self-revoke and permanently disable role administration and
+     *      rescue functions. Admin handover remains possible — grant the new admin, then the
+     *      new admin revokes the old one.
+     */
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
+        if (role == DEFAULT_ADMIN_ROLE && account == msg.sender) revert CannotRenounceRole();
+        super.revokeRole(role, account);
+    }
+
     // --------
     // Internal
     // --------

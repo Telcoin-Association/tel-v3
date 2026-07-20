@@ -224,6 +224,18 @@ contract MigrationVault is
         revert CannotRenounceRole();
     }
 
+    /**
+     * @notice Revoke a role, except an admin removing its own DEFAULT_ADMIN_ROLE.
+     * @dev Closes the renounceRole bypass: DEFAULT_ADMIN_ROLE administers itself, so a sole
+     *      admin could otherwise self-revoke and permanently disable upgrades and role
+     *      administration. Admin handover remains possible — grant the new admin, then the
+     *      new admin revokes the old one.
+     */
+    function revokeRole(bytes32 role, address account) public override {
+        if (role == DEFAULT_ADMIN_ROLE && account == msg.sender) revert CannotRenounceRole();
+        super.revokeRole(role, account);
+    }
+
     // ----
     // View
     // ----
