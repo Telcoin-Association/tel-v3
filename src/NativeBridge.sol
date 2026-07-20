@@ -43,6 +43,7 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
     error CannotRenounceRole();
     error ZeroAddress();
     error ZeroAmount();
+    error ComposeNotSupported();
 
     // ~ Constructor ~
 
@@ -68,15 +69,19 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
     // ~ NativeOFTAdapter Overrides ~
 
     /**
-     * @notice Pauses the bridge — blocks send and receive.
+     * @notice Pauses the bridge — blocks send and receive. Rejects composed messages.
      * @dev Overrides NativeOFTAdapter.send() to enforce pausability. Delegates to super
      *      which validates msg.value == fee + amount before executing the send.
+     *      Nonempty composeMsg switches the LayerZero message type from SEND to SEND_AND_CALL,
+     *      which bypasses the SEND-only enforced options (no minimum receive or compose gas).
+     *      Compose is unused across the Telcoin OFT mesh, so it is rejected outright.
      */
     function send(
         SendParam calldata _sendParam,
         MessagingFee calldata _fee,
         address _refundAddress
     ) public payable override whenNotPaused returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
+        if (_sendParam.composeMsg.length > 0) revert ComposeNotSupported();
         return super.send(_sendParam, _fee, _refundAddress);
     }
 
