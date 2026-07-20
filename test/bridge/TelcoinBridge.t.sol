@@ -283,6 +283,57 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.renounceOwnership();
     }
 
+    /// @notice The initial owner holds DEFAULT_ADMIN_ROLE after construction.
+    function test_OwnershipAdminBinding_initialOwnerIsAdmin() public view {
+        assertTrue(bridgeA.hasRole(bridgeA.DEFAULT_ADMIN_ROLE(), owner));
+    }
+
+    /// @notice Accepting ownership grants DEFAULT_ADMIN_ROLE to the new owner and revokes it from
+    ///         the old owner atomically, so the two authority systems cannot diverge.
+    function test_OwnershipAdminBinding_followsAcceptedTransfer() public {
+        address newOwner = makeAddr("newOwner");
+        bytes32 adminRole = bridgeA.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        // pending transfer must not move admin yet
+        assertTrue(bridgeA.hasRole(adminRole, owner));
+        assertFalse(bridgeA.hasRole(adminRole, newOwner));
+
+        vm.prank(newOwner);
+        bridgeA.acceptOwnership();
+
+        // admin now tracks ownership exactly
+        assertTrue(bridgeA.hasRole(adminRole, newOwner));
+        assertFalse(bridgeA.hasRole(adminRole, owner));
+        assertEq(bridgeA.getRoleMemberCount(adminRole), 1);
+    }
+
+    /// @notice After handover the old owner can no longer administer roles; the new owner can.
+    function test_OwnershipAdminBinding_oldOwnerLosesRoleAdmin() public {
+        address newOwner = makeAddr("newOwner");
+        bytes32 adminRole = bridgeA.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+        vm.prank(newOwner);
+        bridgeA.acceptOwnership();
+
+        // old owner can no longer grant PAUSER_ROLE
+        address someBot = makeAddr("someBot");
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, owner, adminRole)
+        );
+        bridgeA.grantRole(PAUSER_ROLE, someBot);
+
+        // new owner can
+        vm.prank(newOwner);
+        bridgeA.grantRole(PAUSER_ROLE, someBot);
+        assertTrue(bridgeA.hasRole(PAUSER_ROLE, someBot));
+    }
+
     // ----------------------
     // MintBurnWrapper Tests
     // ----------------------

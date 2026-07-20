@@ -197,4 +197,53 @@ contract NativeBridgeTest is BaseSetup {
         vm.expectRevert(NativeBridge.CannotRenounceOwnership.selector);
         nativeBridge.renounceOwnership();
     }
+
+    /// @notice The initial owner holds DEFAULT_ADMIN_ROLE after construction.
+    function test_OwnershipAdminBinding_initialOwnerIsAdmin() public view {
+        assertTrue(nativeBridge.hasRole(nativeBridge.DEFAULT_ADMIN_ROLE(), owner));
+    }
+
+    /// @notice Accepting ownership grants DEFAULT_ADMIN_ROLE to the new owner and revokes it from
+    ///         the old owner atomically, so the two authority systems cannot diverge.
+    function test_OwnershipAdminBinding_followsAcceptedTransfer() public {
+        address newOwner = makeAddr("newOwner");
+        bytes32 adminRole = nativeBridge.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        nativeBridge.transferOwnership(newOwner);
+
+        // pending transfer must not move admin yet
+        assertTrue(nativeBridge.hasRole(adminRole, owner));
+        assertFalse(nativeBridge.hasRole(adminRole, newOwner));
+
+        vm.prank(newOwner);
+        nativeBridge.acceptOwnership();
+
+        // admin now tracks ownership exactly
+        assertTrue(nativeBridge.hasRole(adminRole, newOwner));
+        assertFalse(nativeBridge.hasRole(adminRole, owner));
+        assertEq(nativeBridge.getRoleMemberCount(adminRole), 1);
+    }
+
+    /// @notice After handover the old owner can no longer administer roles; the new owner can.
+    function test_OwnershipAdminBinding_oldOwnerLosesRoleAdmin() public {
+        address newOwner = makeAddr("newOwner");
+        bytes32 adminRole = nativeBridge.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        nativeBridge.transferOwnership(newOwner);
+        vm.prank(newOwner);
+        nativeBridge.acceptOwnership();
+
+        address someBot = makeAddr("someBot");
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, owner, adminRole)
+        );
+        nativeBridge.grantRole(PAUSER_ROLE, someBot);
+
+        vm.prank(newOwner);
+        nativeBridge.grantRole(PAUSER_ROLE, someBot);
+        assertTrue(nativeBridge.hasRole(PAUSER_ROLE, someBot));
+    }
 }

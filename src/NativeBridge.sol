@@ -69,9 +69,12 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
     // ~ NativeOFTAdapter Overrides ~
 
     /**
-     * @notice Pauses the bridge — blocks send and receive. Rejects composed messages.
-     * @dev Overrides NativeOFTAdapter.send() to enforce pausability. Delegates to super
-     *      which validates msg.value == fee + amount before executing the send.
+     * @notice Initiates an outbound bridge transfer of native TEL to the destination chain.
+     *         Reverts while the bridge is paused. Rejects composed messages.
+     * @dev Overrides NativeOFTAdapter.send() to add whenNotPaused and the compose check.
+     *      Delegates to super, which validates msg.value == fee + amount before executing the
+     *      send. Pause state is changed only by pause()/unpause(); the inbound path enforces
+     *      it independently in _lzReceive().
      *      Nonempty composeMsg switches the LayerZero message type from SEND to SEND_AND_CALL,
      *      which bypasses the SEND-only enforced options (no minimum receive or compose gas).
      *      Compose is unused across the Telcoin OFT mesh, so it is rejected outright.
@@ -86,7 +89,9 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
     }
 
     /**
-     * @dev Enforces pausability on inbound messages.
+     * @dev Inbound message delivery. Reverts while paused — the inbound path enforces pause
+     *      state independently of send(). Delegates to the inherited implementation, which
+     *      credits native TEL from the reserve and emits LayerZero's OFTReceived event.
      */
     function _lzReceive(
         Origin calldata _origin,
@@ -138,12 +143,24 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
 
     // ~ Ownership ~
 
+    /// @notice Transfers owner role from current owner to `newOwner`.
     function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) onlyOwner {
         Ownable2Step.transferOwnership(newOwner);
     }
 
+    /**
+     * @dev Binds DEFAULT_ADMIN_ROLE to ownership so the two authority systems cannot silently
+     *      diverge. On every ownership move (including acceptOwnership) the incoming owner is
+     *      granted DEFAULT_ADMIN_ROLE and the outgoing owner has it revoked, atomically. Uses the
+     *      internal _revokeRole so the self-revocation guard does not block the handover.
+     */
     function _transferOwnership(address newOwner) internal override(Ownable, Ownable2Step) {
+        address previousOwner = owner();
         Ownable2Step._transferOwnership(newOwner);
+        if (newOwner != previousOwner) {
+            if (newOwner != address(0)) _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+            if (previousOwner != address(0)) _revokeRole(DEFAULT_ADMIN_ROLE, previousOwner);
+        }
     }
 
     /// @notice Disabled — renouncing ownership would permanently brick pause and rescue.
