@@ -33,7 +33,7 @@ abstract contract TelcoinV3BaseSetup is Test, Roles {
         (signer, signerPk) = makeAddrAndKey("signer");
 
         vm.prank(owner);
-        token = new TelcoinV3(INITIAL_SUPPLY, owner);
+        token = new TelcoinV3(owner);
 
         vm.startPrank(owner);
         token.grantRole(MINTER_ROLE, address(bridge));
@@ -42,9 +42,12 @@ abstract contract TelcoinV3BaseSetup is Test, Roles {
         token.grantRole(UNPAUSER_ROLE, address(owner));
         vm.stopPrank();
 
+        // No initial supply is minted at construction; fund owner via the minter for tests.
+        vm.startPrank(bridge);
+        token.mint(owner, INITIAL_SUPPLY);
         // Fund signer for signature-based tests
-        vm.prank(bridge);
         token.mint(signer, 10_000 ether);
+        vm.stopPrank();
     }
 
     // -------

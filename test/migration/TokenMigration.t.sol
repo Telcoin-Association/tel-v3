@@ -28,8 +28,8 @@ contract TokenMigrationTest is Test, Roles {
     // constants
     address constant OLDTOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F; // ethereum
     uint256 constant OLDTOKEN_SUPPLY = 100_000_000_000 * 10 ** 2; // 100B with 2 decimals
-    uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 10_000_000_000 * 10 ** 18; // 10B with 18 decimals
     uint256 constant INITIAL_USER_BAL = 1_000_000 * 10 ** 2;
+    uint256 constant INITIAL_OWNER_V3_BALANCE = 10_000_000_000 ether; // funds owner for recover tests
     uint256 constant MIGRATION_DURATION = 365 days;
     uint256 constant WITHDRAWAL_DELAY = 90 days;
 
@@ -59,7 +59,7 @@ contract TokenMigrationTest is Test, Roles {
         // deploy new token using create3 and mint to migration contract
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner)
+            type(TelcoinV3).creationCode, abi.encode(owner)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
@@ -80,6 +80,14 @@ contract TokenMigrationTest is Test, Roles {
         // set minter role on TelcoinV3
         vm.prank(owner);
         telcoinV3.grantRole(MINTER_ROLE, address(migration));
+
+        // TelcoinV3 mints no supply at construction; fund owner with TEL v3 for tests that move
+        // it (e.g. recoverERC20) via a transient minter grant.
+        vm.startPrank(owner);
+        telcoinV3.grantRole(MINTER_ROLE, owner);
+        telcoinV3.mint(owner, INITIAL_OWNER_V3_BALANCE);
+        telcoinV3.revokeRole(MINTER_ROLE, owner);
+        vm.stopPrank();
 
         // grant pause roles post-deploy (mirrors the deployment configuration step)
         vm.startPrank(owner);

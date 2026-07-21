@@ -39,7 +39,6 @@ contract MigrationVaultTest is Test, Roles {
     uint8 internal constant NEW_DECIMALS = 18;
     uint256 internal constant VAULT_RESERVE = 1_000_000_000 ether; // 1B NEW tokens
     uint256 internal constant USER_BALANCE = 1_000_000 * 10 ** OLD_DECIMALS; // 1M OLD tokens
-    uint256 internal constant INITIAL_V3_SUPPLY = 10_000_000_000 ether; // 10B
 
     address constant TELV2_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
 
@@ -64,7 +63,7 @@ contract MigrationVaultTest is Test, Roles {
 
         // Deploy TelcoinV3
         vm.prank(admin);
-        newToken = new TelcoinV3(INITIAL_V3_SUPPLY, admin);
+        newToken = new TelcoinV3(admin);
         assertEq(newToken.decimals(), NEW_DECIMALS);
 
         // Deploy MigrationVault implementation and proxy

@@ -35,13 +35,11 @@ contract TelcoinV3 is IERC20Mintable, EIP3009, ERC20Permit, Pausable, Roles, Acc
     error ZeroAmount();
 
     /**
-     * @dev Constructor that optionally mints an initial supply to the admin address
-     * @param initialSupply_ The initial supply to mint on this chain. Tokens go to admin. Can be 0.
+     * @dev Constructor. Assigns initial state for TelcoinV3.
      * @param admin_ The owner (Telcoin TAO Governance Safe)
      */
-    constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") ERC20Permit("Telcoin") {
-        if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
-        _mint(admin_, initialSupply_);
+    constructor(address admin_) ERC20("Telcoin", "TEL") ERC20Permit("Telcoin") {
+        if (admin_ == address(0)) revert ZeroAddress();
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
     }
 

@@ -23,7 +23,6 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
     // constants
     address constant OLD_TOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
-    uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 0;
     // largest holder is Polygon bridge ~35B so set bound to 50B
     uint256 constant MAX_OLD_TOKEN_AMOUNT = 50_000_000_000 * 10 ** 2; // 50B with 2 decimals
     uint256 constant MAX_UINT256 = type(uint256).max;
@@ -51,7 +50,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // deploy new token using create3
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner)
+            type(TelcoinV3).creationCode, abi.encode(owner)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
