@@ -135,17 +135,32 @@ contract NativeBridgeTest is BaseSetup {
         nativeBridge.pause();
     }
 
-    /// @notice A role holder cannot renounce; admin cannot self-revoke its own admin role.
-    function test_AccessControl_renounceAndSelfRevokeGuards() public {
-        bytes32 adminRole = nativeBridge.DEFAULT_ADMIN_ROLE();
+    /// @notice The owner is the single role authority: it can grant and revoke pause roles.
+    function test_AccessControl_ownerManagesRoles() public {
+        address bot = makeAddr("bot");
+        vm.startPrank(owner);
+        nativeBridge.grantRole(PAUSER_ROLE, bot);
+        assertTrue(nativeBridge.hasRole(PAUSER_ROLE, bot));
+        nativeBridge.revokeRole(PAUSER_ROLE, bot);
+        assertFalse(nativeBridge.hasRole(PAUSER_ROLE, bot));
+        vm.stopPrank();
+    }
 
+    /// @notice A non-owner cannot grant or revoke roles.
+    function test_AccessControl_nonOwnerCannotManageRoles() public {
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        nativeBridge.grantRole(PAUSER_ROLE, user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        nativeBridge.revokeRole(PAUSER_ROLE, user1);
+        vm.stopPrank();
+    }
+
+    /// @notice Roles cannot be renounced — the owner is the sole role manager.
+    function test_AccessControl_renounceDisabled() public {
         vm.prank(owner);
         vm.expectRevert(NativeBridge.CannotRenounceRole.selector);
         nativeBridge.renounceRole(PAUSER_ROLE, owner);
-
-        vm.prank(owner);
-        vm.expectRevert(NativeBridge.CannotRenounceRole.selector);
-        nativeBridge.revokeRole(adminRole, owner);
     }
 
     /// @notice The bridge accepts native ETH sent directly, increasing the reserve and emitting ReserveFunded.
@@ -198,53 +213,33 @@ contract NativeBridgeTest is BaseSetup {
         nativeBridge.renounceOwnership();
     }
 
-    /// @notice The initial owner holds DEFAULT_ADMIN_ROLE after construction.
-    function test_OwnershipAdminBinding_initialOwnerIsAdmin() public view {
-        assertTrue(nativeBridge.hasRole(nativeBridge.DEFAULT_ADMIN_ROLE(), owner));
-    }
-
-    /// @notice Accepting ownership grants DEFAULT_ADMIN_ROLE to the new owner and revokes it from
-    ///         the old owner atomically, so the two authority systems cannot diverge.
-    function test_OwnershipAdminBinding_followsAcceptedTransfer() public {
+    /// @notice Role-management authority follows ownership: it does not move on a pending transfer,
+    ///         moves to the new owner on acceptance, and the former owner loses it — with no separate
+    ///         admin set that could diverge from ownership.
+    function test_RoleAuthorityFollowsOwnership() public {
         address newOwner = makeAddr("newOwner");
-        bytes32 adminRole = nativeBridge.DEFAULT_ADMIN_ROLE();
+        address bot = makeAddr("bot");
 
         vm.prank(owner);
         nativeBridge.transferOwnership(newOwner);
 
-        // pending transfer must not move admin yet
-        assertTrue(nativeBridge.hasRole(adminRole, owner));
-        assertFalse(nativeBridge.hasRole(adminRole, newOwner));
+        // pending transfer: authority has not moved yet, so the pending owner cannot manage roles
+        vm.prank(newOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, newOwner));
+        nativeBridge.grantRole(PAUSER_ROLE, bot);
 
         vm.prank(newOwner);
         nativeBridge.acceptOwnership();
 
-        // admin now tracks ownership exactly
-        assertTrue(nativeBridge.hasRole(adminRole, newOwner));
-        assertFalse(nativeBridge.hasRole(adminRole, owner));
-        assertEq(nativeBridge.getRoleMemberCount(adminRole), 1);
-    }
-
-    /// @notice After handover the old owner can no longer administer roles; the new owner can.
-    function test_OwnershipAdminBinding_oldOwnerLosesRoleAdmin() public {
-        address newOwner = makeAddr("newOwner");
-        bytes32 adminRole = nativeBridge.DEFAULT_ADMIN_ROLE();
-
+        // former owner can no longer manage roles
         vm.prank(owner);
-        nativeBridge.transferOwnership(newOwner);
-        vm.prank(newOwner);
-        nativeBridge.acceptOwnership();
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, owner));
+        nativeBridge.grantRole(PAUSER_ROLE, bot);
 
-        address someBot = makeAddr("someBot");
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, owner, adminRole)
-        );
-        nativeBridge.grantRole(PAUSER_ROLE, someBot);
-
+        // new owner can
         vm.prank(newOwner);
-        nativeBridge.grantRole(PAUSER_ROLE, someBot);
-        assertTrue(nativeBridge.hasRole(PAUSER_ROLE, someBot));
+        nativeBridge.grantRole(PAUSER_ROLE, bot);
+        assertTrue(nativeBridge.hasRole(PAUSER_ROLE, bot));
     }
 
     /// @notice The LayerZero endpoint delegate tracks ownership: it starts as the initial owner

@@ -50,14 +50,12 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
     /**
      * @dev Constructor.
      * @param _endpoint The local LayerZero endpoint address
-     * @param _delegate The delegate/owner address for OApp configuration (receives DEFAULT_ADMIN_ROLE)
+     * @param _delegate The delegate/owner address for OApp configuration and role management
      */
     constructor(
         address _endpoint,
         address _delegate
-    ) NativeOFTAdapter(18, _endpoint, _delegate) Ownable(_delegate) {
-        _grantRole(DEFAULT_ADMIN_ROLE, _delegate);
-    }
+    ) NativeOFTAdapter(18, _endpoint, _delegate) Ownable(_delegate) {}
 
     // ~ Receive ~
 
@@ -125,20 +123,27 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
     // ~ Access Control ~
 
     /**
-     * @notice Disabled — roles may only be revoked by an admin, never self-renounced.
+     * @notice Grant a role. Gated on the owner so role administration follows ownership.
+     * @dev The bridge has no DEFAULT_ADMIN_ROLE; the Ownable owner is the single role authority,
+     *      so a standard Ownable2Step handover carries role-management rights to the new owner
+     *      with no separate admin set to keep in sync.
      */
-    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
-        revert CannotRenounceRole();
+    function grantRole(bytes32 role, address account) public override(AccessControl, IAccessControl) onlyOwner {
+        _grantRole(role, account);
     }
 
     /**
-     * @notice Revoke a role, except an admin removing its own DEFAULT_ADMIN_ROLE.
-     * @dev Mirrors the TelcoinV3/MigrationVault guard: prevents the sole admin from
-     *      permanently disabling role administration via self-revocation.
+     * @notice Revoke a role. Gated on the owner (see grantRole).
      */
-    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
-        if (role == DEFAULT_ADMIN_ROLE && account == msg.sender) revert CannotRenounceRole();
-        super.revokeRole(role, account);
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) onlyOwner {
+        _revokeRole(role, account);
+    }
+
+    /**
+     * @notice Disabled — roles may only be revoked by the owner, never self-renounced.
+     */
+    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
+        revert CannotRenounceRole();
     }
 
     // ~ Ownership ~
@@ -160,19 +165,9 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, A
         endpoint.setDelegate(owner());
     }
 
-    /**
-     * @dev Binds DEFAULT_ADMIN_ROLE to ownership so the two authority systems cannot silently
-     *      diverge. On every ownership move (including acceptOwnership) the incoming owner is
-     *      granted DEFAULT_ADMIN_ROLE and the outgoing owner has it revoked, atomically. Uses the
-     *      internal _revokeRole so the self-revocation guard does not block the handover.
-     */
+    /// @dev Resolves the Ownable/Ownable2Step diamond; two-step semantics via Ownable2Step.
     function _transferOwnership(address newOwner) internal override(Ownable, Ownable2Step) {
-        address previousOwner = owner();
         Ownable2Step._transferOwnership(newOwner);
-        if (newOwner != previousOwner) {
-            if (newOwner != address(0)) _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
-            if (previousOwner != address(0)) _revokeRole(DEFAULT_ADMIN_ROLE, previousOwner);
-        }
     }
 
     /// @notice Disabled — renouncing ownership would permanently brick pause and rescue.

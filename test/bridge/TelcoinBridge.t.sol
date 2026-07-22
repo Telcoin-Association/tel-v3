@@ -180,17 +180,32 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.pause();
     }
 
-    /// @notice A role holder cannot renounce; admin cannot self-revoke its own admin role.
-    function test_AccessControl_renounceAndSelfRevokeGuards() public {
-        bytes32 adminRole = bridgeA.DEFAULT_ADMIN_ROLE();
+    /// @notice The owner is the single role authority: it can grant and revoke pause roles.
+    function test_AccessControl_ownerManagesRoles() public {
+        address bot = makeAddr("bot");
+        vm.startPrank(owner);
+        bridgeA.grantRole(PAUSER_ROLE, bot);
+        assertTrue(bridgeA.hasRole(PAUSER_ROLE, bot));
+        bridgeA.revokeRole(PAUSER_ROLE, bot);
+        assertFalse(bridgeA.hasRole(PAUSER_ROLE, bot));
+        vm.stopPrank();
+    }
 
+    /// @notice A non-owner cannot grant or revoke roles.
+    function test_AccessControl_nonOwnerCannotManageRoles() public {
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        bridgeA.grantRole(PAUSER_ROLE, user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        bridgeA.revokeRole(PAUSER_ROLE, user1);
+        vm.stopPrank();
+    }
+
+    /// @notice Roles cannot be renounced — the owner is the sole role manager.
+    function test_AccessControl_renounceDisabled() public {
         vm.prank(owner);
         vm.expectRevert(TelcoinBridge.CannotRenounceRole.selector);
         bridgeA.renounceRole(PAUSER_ROLE, owner);
-
-        vm.prank(owner);
-        vm.expectRevert(TelcoinBridge.CannotRenounceRole.selector);
-        bridgeA.revokeRole(adminRole, owner);
     }
 
     /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge to a specified address.
@@ -283,55 +298,33 @@ contract TelcoinBridgeTest is BaseSetup {
         bridgeA.renounceOwnership();
     }
 
-    /// @notice The initial owner holds DEFAULT_ADMIN_ROLE after construction.
-    function test_OwnershipAdminBinding_initialOwnerIsAdmin() public view {
-        assertTrue(bridgeA.hasRole(bridgeA.DEFAULT_ADMIN_ROLE(), owner));
-    }
-
-    /// @notice Accepting ownership grants DEFAULT_ADMIN_ROLE to the new owner and revokes it from
-    ///         the old owner atomically, so the two authority systems cannot diverge.
-    function test_OwnershipAdminBinding_followsAcceptedTransfer() public {
+    /// @notice Role-management authority follows ownership: it does not move on a pending transfer,
+    ///         moves to the new owner on acceptance, and the former owner loses it — with no separate
+    ///         admin set that could diverge from ownership.
+    function test_RoleAuthorityFollowsOwnership() public {
         address newOwner = makeAddr("newOwner");
-        bytes32 adminRole = bridgeA.DEFAULT_ADMIN_ROLE();
+        address bot = makeAddr("bot");
 
         vm.prank(owner);
         bridgeA.transferOwnership(newOwner);
 
-        // pending transfer must not move admin yet
-        assertTrue(bridgeA.hasRole(adminRole, owner));
-        assertFalse(bridgeA.hasRole(adminRole, newOwner));
+        // pending transfer: authority has not moved yet, so the pending owner cannot manage roles
+        vm.prank(newOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, newOwner));
+        bridgeA.grantRole(PAUSER_ROLE, bot);
 
         vm.prank(newOwner);
         bridgeA.acceptOwnership();
 
-        // admin now tracks ownership exactly
-        assertTrue(bridgeA.hasRole(adminRole, newOwner));
-        assertFalse(bridgeA.hasRole(adminRole, owner));
-        assertEq(bridgeA.getRoleMemberCount(adminRole), 1);
-    }
-
-    /// @notice After handover the old owner can no longer administer roles; the new owner can.
-    function test_OwnershipAdminBinding_oldOwnerLosesRoleAdmin() public {
-        address newOwner = makeAddr("newOwner");
-        bytes32 adminRole = bridgeA.DEFAULT_ADMIN_ROLE();
-
+        // former owner can no longer manage roles
         vm.prank(owner);
-        bridgeA.transferOwnership(newOwner);
-        vm.prank(newOwner);
-        bridgeA.acceptOwnership();
-
-        // old owner can no longer grant PAUSER_ROLE
-        address someBot = makeAddr("someBot");
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, owner, adminRole)
-        );
-        bridgeA.grantRole(PAUSER_ROLE, someBot);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, owner));
+        bridgeA.grantRole(PAUSER_ROLE, bot);
 
         // new owner can
         vm.prank(newOwner);
-        bridgeA.grantRole(PAUSER_ROLE, someBot);
-        assertTrue(bridgeA.hasRole(PAUSER_ROLE, someBot));
+        bridgeA.grantRole(PAUSER_ROLE, bot);
+        assertTrue(bridgeA.hasRole(PAUSER_ROLE, bot));
     }
 
     /// @notice The LayerZero endpoint delegate tracks ownership: it starts as the initial owner
