@@ -23,7 +23,6 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
     // constants
     address constant OLD_TOKEN_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
-    uint256 constant INITIAL_NEW_TOKEN_SUPPLY = 0;
     // largest holder is Polygon bridge ~35B so set bound to 50B
     uint256 constant MAX_OLD_TOKEN_AMOUNT = 50_000_000_000 * 10 ** 2; // 50B with 2 decimals
     uint256 constant MAX_UINT256 = type(uint256).max;
@@ -51,7 +50,7 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // deploy new token using create3
         bytes32 tokenSalt = keccak256("NEW_TOKEN_SALT");
         bytes memory tokenArgs = abi.encodePacked(
-            type(TelcoinV3).creationCode, abi.encode(INITIAL_NEW_TOKEN_SUPPLY, owner)
+            type(TelcoinV3).creationCode, abi.encode(owner)
         );
         address deployment = create3.deploy(tokenSalt, tokenArgs);
         telcoinV3 = TelcoinV3(deployment);
@@ -69,6 +68,12 @@ contract TokenMigrationFuzzTest is Test, Roles {
         // set minter role on TelcoinV3
         vm.prank(owner);
         telcoinV3.grantRole(MINTER_ROLE, address(migration));
+
+        // grant pause roles post-deploy (mirrors the deployment configuration step)
+        vm.startPrank(owner);
+        migration.grantRole(PAUSER_ROLE, owner);
+        migration.grantRole(UNPAUSER_ROLE, owner);
+        vm.stopPrank();
     }
 
     /**
@@ -417,5 +422,43 @@ contract TokenMigrationFuzzTest is Test, Roles {
 
         // Migration contract holds no TelcoinV3
         assertEq(telcoinV3.balanceOf(address(migration)), 0, "Migration contract should hold no TelcoinV3");
+    }
+
+    /**
+     * Fuzz test: Once old tokens are withdrawn, migration can never be reopened —
+     * setMigrationExpiry and migrate revert for any timestamp and any proposed expiry.
+     */
+    function testFuzz_ClosedMigrationCannotReopen(uint256 amount, uint256 warpAfter, uint256 newExpiry) public {
+        amount = bound(amount, 1, MAX_OLD_TOKEN_AMOUNT);
+
+        address user = address(uint160(uint256(keccak256("closure_user"))));
+        deal(address(oldToken), user, amount);
+
+        vm.startPrank(user);
+        oldToken.approve(address(migration), amount);
+        migration.migrate();
+        vm.stopPrank();
+
+        // conclude migration and withdraw the escrow at some time past the unlock
+        uint256 unlockTime = migration.migrationExpiry() + migration.withdrawalDelay();
+        warpAfter = bound(warpAfter, 0, 100 * 365 days);
+        vm.warp(unlockTime + warpAfter);
+
+        vm.prank(owner);
+        migration.withdrawOldTokens(owner);
+        assertTrue(migration.migrationClosed(), "Migration should be closed after withdrawal");
+
+        // any attempt to move the expiry reverts, regardless of the proposed value
+        newExpiry = bound(newExpiry, migration.migrationExpiry(), type(uint256).max);
+        vm.prank(owner);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.setMigrationExpiry(newExpiry);
+
+        // re-migrating the withdrawn tokens reverts
+        vm.startPrank(owner);
+        oldToken.approve(address(migration), amount);
+        vm.expectRevert(TokenMigration.MigrationConcluded.selector);
+        migration.migrate();
+        vm.stopPrank();
     }
 }

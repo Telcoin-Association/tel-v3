@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {BaseSetup} from "./BaseSetup.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {TelcoinBridge} from "../../src/TelcoinBridge.sol";
 import {MintBurnWrapper} from "../../src/MintBurnWrapper.sol";
 import {IMintableBurnable} from "@layerzerolabs/oft-evm/contracts/interfaces/IMintableBurnable.sol";
@@ -114,10 +115,12 @@ contract TelcoinBridgeTest is BaseSetup {
         assertTrue(bridgeA.paused());
     }
 
-    /// @notice pause reverts when called by a non-owner.
-    function test_Pause_RevertNotOwner() public {
+    /// @notice pause reverts when called by an address without PAUSER_ROLE.
+    function test_Pause_RevertNotPauser() public {
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, PAUSER_ROLE)
+        );
         bridgeA.pause();
     }
 
@@ -130,14 +133,79 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.stopPrank();
     }
 
-    /// @notice unpause reverts when called by a non-owner.
-    function test_Unpause_RevertNotOwner() public {
+    /// @notice unpause reverts when called by an address without UNPAUSER_ROLE.
+    function test_Unpause_RevertNotUnpauser() public {
         vm.prank(owner);
         bridgeA.pause();
 
         vm.prank(user1);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user1, UNPAUSER_ROLE)
+        );
         bridgeA.unpause();
+    }
+
+    /// @notice A dedicated pauser can pause but not unpause; a dedicated unpauser can unpause but not pause.
+    function test_PauseUnpause_roleSeparation() public {
+        address pauserBot = makeAddr("pauserBot");
+        address unpauserGov = makeAddr("unpauserGov");
+
+        vm.startPrank(owner);
+        bridgeA.grantRole(PAUSER_ROLE, pauserBot);
+        bridgeA.grantRole(UNPAUSER_ROLE, unpauserGov);
+        vm.stopPrank();
+
+        // pauser can halt the bridge without owning it
+        vm.prank(pauserBot);
+        bridgeA.pause();
+        assertTrue(bridgeA.paused());
+
+        // pauser cannot unpause
+        vm.prank(pauserBot);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, pauserBot, UNPAUSER_ROLE)
+        );
+        bridgeA.unpause();
+
+        // unpauser can resume
+        vm.prank(unpauserGov);
+        bridgeA.unpause();
+        assertFalse(bridgeA.paused());
+
+        // unpauser cannot pause
+        vm.prank(unpauserGov);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, unpauserGov, PAUSER_ROLE)
+        );
+        bridgeA.pause();
+    }
+
+    /// @notice The owner is the single role authority: it can grant and revoke pause roles.
+    function test_AccessControl_ownerManagesRoles() public {
+        address bot = makeAddr("bot");
+        vm.startPrank(owner);
+        bridgeA.grantRole(PAUSER_ROLE, bot);
+        assertTrue(bridgeA.hasRole(PAUSER_ROLE, bot));
+        bridgeA.revokeRole(PAUSER_ROLE, bot);
+        assertFalse(bridgeA.hasRole(PAUSER_ROLE, bot));
+        vm.stopPrank();
+    }
+
+    /// @notice A non-owner cannot grant or revoke roles.
+    function test_AccessControl_nonOwnerCannotManageRoles() public {
+        vm.startPrank(user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        bridgeA.grantRole(PAUSER_ROLE, user1);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user1));
+        bridgeA.revokeRole(PAUSER_ROLE, user1);
+        vm.stopPrank();
+    }
+
+    /// @notice Roles cannot be renounced — the owner is the sole role manager.
+    function test_AccessControl_renounceDisabled() public {
+        vm.prank(owner);
+        vm.expectRevert(TelcoinBridge.CannotRenounceRole.selector);
+        bridgeA.renounceRole(PAUSER_ROLE, owner);
     }
 
     /// @notice Owner can rescue ERC20 tokens accidentally sent to the bridge to a specified address.
@@ -228,6 +296,57 @@ contract TelcoinBridgeTest is BaseSetup {
         vm.prank(owner);
         vm.expectRevert(TelcoinBridge.CannotRenounceOwnership.selector);
         bridgeA.renounceOwnership();
+    }
+
+    /// @notice Role-management authority follows ownership: it does not move on a pending transfer,
+    ///         moves to the new owner on acceptance, and the former owner loses it — with no separate
+    ///         admin set that could diverge from ownership.
+    function test_RoleAuthorityFollowsOwnership() public {
+        address newOwner = makeAddr("newOwner");
+        address bot = makeAddr("bot");
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        // pending transfer: authority has not moved yet, so the pending owner cannot manage roles
+        vm.prank(newOwner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, newOwner));
+        bridgeA.grantRole(PAUSER_ROLE, bot);
+
+        vm.prank(newOwner);
+        bridgeA.acceptOwnership();
+
+        // former owner can no longer manage roles
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, owner));
+        bridgeA.grantRole(PAUSER_ROLE, bot);
+
+        // new owner can
+        vm.prank(newOwner);
+        bridgeA.grantRole(PAUSER_ROLE, bot);
+        assertTrue(bridgeA.hasRole(PAUSER_ROLE, bot));
+    }
+
+    /// @notice The LayerZero endpoint delegate tracks ownership: it starts as the initial owner
+    ///         and rotates to the new owner on acceptOwnership, so a former owner cannot retain
+    ///         endpoint-configuration authority.
+    function test_DelegateFollowsOwnership() public {
+        address newOwner = makeAddr("newOwner");
+
+        // baseline: delegate is the initial owner (set at construction)
+        assertEq(endpointA.delegates(address(bridgeA)), owner);
+
+        vm.prank(owner);
+        bridgeA.transferOwnership(newOwner);
+
+        // pending transfer must not move the delegate yet
+        assertEq(endpointA.delegates(address(bridgeA)), owner);
+
+        vm.prank(newOwner);
+        bridgeA.acceptOwnership();
+
+        // delegate now tracks the new owner; the former owner is no longer endpoint-authorized
+        assertEq(endpointA.delegates(address(bridgeA)), newOwner);
     }
 
     // ----------------------

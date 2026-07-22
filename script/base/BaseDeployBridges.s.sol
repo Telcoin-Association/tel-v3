@@ -32,6 +32,8 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
     // ---------
 
     address internal _admin;
+    address internal _pauser;
+    address internal _unpauser;
 
     bytes32 internal _mintBurnWrapperSalt;
     bytes32 internal _bridgeSalt;
@@ -121,6 +123,8 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 "Deploy NativeBridge"
             );
 
+            _collectPauseRoleGrants(bridge);
+
             if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
                 _saveDeploymentAddress(chain.chainName, "NativeBridge", bridge);
             }
@@ -139,6 +143,8 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 ),
                 "Deploy TelcoinBridge"
             );
+
+            _collectPauseRoleGrants(bridge);
 
             // Grant MINTER/BURNER roles to wrapper on TelcoinV3 (idempotent on-chain)
             TelcoinV3 telcoinContract = TelcoinV3(token);
@@ -167,6 +173,19 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 _saveDeploymentAddress(chain.chainName, "TelcoinBridge", bridge);
             }
         }
+    }
+
+    /// @dev Batches PAUSER_ROLE/UNPAUSER_ROLE grants on a freshly deployed bridge.
+    ///      Roles are granted post-deploy by the admin Safe rather than in the constructor.
+    function _collectPauseRoleGrants(address bridge) internal {
+        require(_pauser != address(0), "Pauser not configured");
+        require(_unpauser != address(0), "Unpauser not configured");
+
+        console.log("  [batch] Grant PAUSER_ROLE / UNPAUSER_ROLE on bridge");
+        _batchTargets.push(bridge);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (PAUSER_ROLE, _pauser)));
+        _batchTargets.push(bridge);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (UNPAUSER_ROLE, _unpauser)));
     }
 
     // -----

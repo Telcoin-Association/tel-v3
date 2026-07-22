@@ -5,9 +5,13 @@ import {NativeOFTAdapter} from "@layerzerolabs/oft-evm/contracts/NativeOFTAdapte
 import {Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PauseRoles} from "./helpers/Roles.sol";
 
 /**
  * @title NativeBridge
@@ -25,7 +29,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
  *      decimalConversionRate = 1e12 (localDecimals=18, sharedDecimals=6).
  *      Max transferable per message: uint64.max * 1e12 ~= 18.4 trillion TEL.
  */
-contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
+contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable, PauseRoles, AccessControlEnumerable {
     using SafeERC20 for IERC20;
 
     // ~ Events ~
@@ -36,14 +40,17 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     // ~ Errors ~
 
     error CannotRenounceOwnership();
+    error CannotRenounceRole();
     error ZeroAddress();
     error ZeroAmount();
+    error ComposeNotSupported();
 
     // ~ Constructor ~
 
     /**
+     * @dev Constructor.
      * @param _endpoint The local LayerZero endpoint address
-     * @param _delegate The delegate/owner address for OApp configuration
+     * @param _delegate The delegate/owner address for OApp configuration and role management
      */
     constructor(
         address _endpoint,
@@ -60,20 +67,29 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
     // ~ NativeOFTAdapter Overrides ~
 
     /**
-     * @notice Pauses the bridge — blocks send and receive.
-     * @dev Overrides NativeOFTAdapter.send() to enforce pausability. Delegates to super
-     *      which validates msg.value == fee + amount before executing the send.
+     * @notice Initiates an outbound bridge transfer of native TEL to the destination chain.
+     *         Reverts while the bridge is paused. Rejects composed messages.
+     * @dev Overrides NativeOFTAdapter.send() to add whenNotPaused and the compose check.
+     *      Delegates to super, which validates msg.value == fee + amount before executing the
+     *      send. Pause state is changed only by pause()/unpause(); the inbound path enforces
+     *      it independently in _lzReceive().
+     *      Nonempty composeMsg switches the LayerZero message type from SEND to SEND_AND_CALL,
+     *      which bypasses the SEND-only enforced options (no minimum receive or compose gas).
+     *      Compose is unused across the Telcoin OFT mesh, so it is rejected outright.
      */
     function send(
         SendParam calldata _sendParam,
         MessagingFee calldata _fee,
         address _refundAddress
     ) public payable override whenNotPaused returns (MessagingReceipt memory msgReceipt, OFTReceipt memory oftReceipt) {
+        if (_sendParam.composeMsg.length > 0) revert ComposeNotSupported();
         return super.send(_sendParam, _fee, _refundAddress);
     }
 
     /**
-     * @dev Enforces pausability on inbound messages.
+     * @dev Inbound message delivery. Reverts while paused — the inbound path enforces pause
+     *      state independently of send(). Delegates to the inherited implementation, which
+     *      credits native TEL from the reserve and emits LayerZero's OFTReceived event.
      */
     function _lzReceive(
         Origin calldata _origin,
@@ -96,16 +112,60 @@ contract NativeBridge is NativeOFTAdapter, Ownable2Step, Pausable {
         IERC20(_token).safeTransfer(_to, _amount);
     }
 
-    function pause() external onlyOwner { _pause(); }
+    /// @notice Pauses the bridge. Separated from owner so a low-latency incident responder can
+    ///         halt the bridge without holding configuration or rescue authority.
+    function pause() external onlyRole(PAUSER_ROLE) { _pause(); }
 
-    function unpause() external onlyOwner { _unpause(); }
+    /// @notice Unpauses the bridge. High-trust action — resuming flow during an active incident
+    ///         reopens the risk, so it is held by governance, separate from PAUSER_ROLE.
+    function unpause() external onlyRole(UNPAUSER_ROLE) { _unpause(); }
+
+    // ~ Access Control ~
+
+    /**
+     * @notice Grant a role. Gated on the owner so role administration follows ownership.
+     * @dev The bridge has no DEFAULT_ADMIN_ROLE; the Ownable owner is the single role authority,
+     *      so a standard Ownable2Step handover carries role-management rights to the new owner
+     *      with no separate admin set to keep in sync.
+     */
+    function grantRole(bytes32 role, address account) public override(AccessControl, IAccessControl) onlyOwner {
+        _grantRole(role, account);
+    }
+
+    /**
+     * @notice Revoke a role. Gated on the owner (see grantRole).
+     */
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) onlyOwner {
+        _revokeRole(role, account);
+    }
+
+    /**
+     * @notice Disabled — roles may only be revoked by the owner, never self-renounced.
+     */
+    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
+        revert CannotRenounceRole();
+    }
 
     // ~ Ownership ~
 
+    /// @notice Transfers owner role from current owner to `newOwner`.
     function transferOwnership(address newOwner) public override(Ownable, Ownable2Step) onlyOwner {
         Ownable2Step.transferOwnership(newOwner);
     }
 
+    /**
+     * @notice Completes the two-step ownership transfer and rotates the LayerZero endpoint
+     *         delegate to the new owner.
+     * @dev Without this, a former owner remains the endpoint delegate after handover and can
+     *      still call endpoint configuration methods (e.g. rewrite the receive ULN to self-attest
+     *      forged packets).
+     */
+    function acceptOwnership() public override {
+        super.acceptOwnership();
+        endpoint.setDelegate(owner());
+    }
+
+    /// @dev Resolves the Ownable/Ownable2Step diamond; two-step semantics via Ownable2Step.
     function _transferOwnership(address newOwner) internal override(Ownable, Ownable2Step) {
         Ownable2Step._transferOwnership(newOwner);
     }

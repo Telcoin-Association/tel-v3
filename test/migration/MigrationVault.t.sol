@@ -39,7 +39,6 @@ contract MigrationVaultTest is Test, Roles {
     uint8 internal constant NEW_DECIMALS = 18;
     uint256 internal constant VAULT_RESERVE = 1_000_000_000 ether; // 1B NEW tokens
     uint256 internal constant USER_BALANCE = 1_000_000 * 10 ** OLD_DECIMALS; // 1M OLD tokens
-    uint256 internal constant INITIAL_V3_SUPPLY = 10_000_000_000 ether; // 10B
 
     address constant TELV2_ADDRESS = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
 
@@ -64,7 +63,7 @@ contract MigrationVaultTest is Test, Roles {
 
         // Deploy TelcoinV3
         vm.prank(admin);
-        newToken = new TelcoinV3(INITIAL_V3_SUPPLY, admin);
+        newToken = new TelcoinV3(admin);
         assertEq(newToken.decimals(), NEW_DECIMALS);
 
         // Deploy MigrationVault implementation and proxy
@@ -646,6 +645,55 @@ contract MigrationVaultTest is Test, Roles {
         vm.prank(unpauser);
         vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
         vault.renounceRole(unpauserRole, unpauser);
+    }
+
+    // -----------------
+    // Revoke Role Tests
+    // -----------------
+
+    /// @dev An admin cannot bypass the renounce ban by revoking its own DEFAULT_ADMIN_ROLE.
+    function test_revokeRole_revertsAdminSelfRevoke() public {
+        vm.prank(admin);
+        vm.expectRevert(MigrationVault.CannotRenounceRole.selector);
+        vault.revokeRole(defaultAdminRole, admin);
+    }
+
+    /// @dev An admin may still revoke its own non-admin roles (recoverable via re-grant).
+    function test_revokeRole_adminCanSelfRevokeNonAdminRole() public {
+        vm.startPrank(admin);
+        vault.grantRole(pauserRole, admin);
+        assertTrue(vault.hasRole(pauserRole, admin));
+
+        vault.revokeRole(pauserRole, admin);
+        assertFalse(vault.hasRole(pauserRole, admin));
+        vm.stopPrank();
+    }
+
+    /// @dev An admin can still revoke roles from other holders.
+    function test_revokeRole_adminCanRevokeOthers() public {
+        vm.prank(admin);
+        vault.revokeRole(pauserRole, pauser);
+        assertFalse(vault.hasRole(pauserRole, pauser));
+    }
+
+    /// @dev Admin handover: grant the new admin, then the new admin revokes the old one.
+    function test_revokeRole_adminHandover() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        vm.prank(admin);
+        vault.grantRole(defaultAdminRole, newAdmin);
+
+        // new admin revokes the old admin (revoker != target, so the guard permits it)
+        vm.prank(newAdmin);
+        vault.revokeRole(defaultAdminRole, admin);
+
+        assertFalse(vault.hasRole(defaultAdminRole, admin));
+        assertTrue(vault.hasRole(defaultAdminRole, newAdmin));
+
+        // new admin retains full role administration
+        vm.prank(newAdmin);
+        vault.grantRole(pauserRole, newAdmin);
+        assertTrue(vault.hasRole(pauserRole, newAdmin));
     }
 
     // ---------------

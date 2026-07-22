@@ -32,24 +32,21 @@ contract DeployToken is BaseDeployToken {
         allChains.push(TokenChainConfig({
             chainName: "ethereum",
             rpcUrl: vm.envString("ETHEREUM_RPC_URL"),
-            evmChainId: ETH_MAINNET_CHAIN_ID,
-            initialSupply: 0 // TODO: Set mainnet initial supply
+            evmChainId: ETH_MAINNET_CHAIN_ID
         }));
 
         // Base Mainnet
         allChains.push(TokenChainConfig({
             chainName: "base",
             rpcUrl: vm.envString("BASE_RPC_URL"),
-            evmChainId: BASE_MAINNET_CHAIN_ID,
-            initialSupply: 0 // TODO: Set mainnet initial supply
+            evmChainId: BASE_MAINNET_CHAIN_ID
         }));
 
         // Polygon Mainnet
         allChains.push(TokenChainConfig({
             chainName: "polygon",
             rpcUrl: vm.envString("POLYGON_RPC_URL"),
-            evmChainId: POLYGON_MAINNET_CHAIN_ID,
-            initialSupply: 0 // TODO: Set mainnet initial supply
+            evmChainId: POLYGON_MAINNET_CHAIN_ID
         }));
 
         // TelcoinNetwork
@@ -57,8 +54,7 @@ contract DeployToken is BaseDeployToken {
         // allChains.push(TokenChainConfig({
         //     chainName: "telcoin-network",
         //     rpcUrl: vm.envString("TELCOIN_NETWORK_RPC_URL"),
-        //     evmChainId: TELCOIN_NETWORK_CHAIN_ID,
-        //     initialSupply: 0
+        //     evmChainId: TELCOIN_NETWORK_CHAIN_ID
         // }));
     }
 }

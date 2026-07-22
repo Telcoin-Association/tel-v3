@@ -53,8 +53,17 @@ contract BaseSetup is Test, Roles {
 
         vm.startPrank(owner);
 
-        telcoinA = new TelcoinV3(INITIAL_SUPPLY, owner);
-        telcoinB = new TelcoinV3(INITIAL_SUPPLY, owner);
+        telcoinA = new TelcoinV3(owner);
+        telcoinB = new TelcoinV3(owner);
+
+        // No initial supply at construction — mint the test supply to owner via a transient
+        // minter grant, then revoke so the wrappers remain the sole minters (as in production).
+        telcoinA.grantRole(MINTER_ROLE, owner);
+        telcoinB.grantRole(MINTER_ROLE, owner);
+        telcoinA.mint(owner, INITIAL_SUPPLY);
+        telcoinB.mint(owner, INITIAL_SUPPLY);
+        telcoinA.revokeRole(MINTER_ROLE, owner);
+        telcoinB.revokeRole(MINTER_ROLE, owner);
 
         // Deploy wrappers — these hold MINTER/BURNER roles on the token
         wrapperA = new MintBurnWrapper(address(telcoinA), owner);
@@ -66,6 +75,14 @@ contract BaseSetup is Test, Roles {
 
         // Deploy NativeBridge on TelcoinNetwork
         nativeBridge = new NativeBridge(address(endpointTN), owner);
+
+        // Grant pause roles post-deploy (mirrors the deployment configuration step)
+        bridgeA.grantRole(PAUSER_ROLE, owner);
+        bridgeA.grantRole(UNPAUSER_ROLE, owner);
+        bridgeB.grantRole(PAUSER_ROLE, owner);
+        bridgeB.grantRole(UNPAUSER_ROLE, owner);
+        nativeBridge.grantRole(PAUSER_ROLE, owner);
+        nativeBridge.grantRole(UNPAUSER_ROLE, owner);
 
         // Wire satellite bridges to each other and to NativeBridge
         bridgeA.setPeer(EID_B, _addressToBytes32(address(bridgeB)));

@@ -13,6 +13,12 @@ import {IEIP3009} from "../interfaces/IEIP3009.sol";
  * @dev Inheriting contracts must provide ERC20._transfer() and EIP712._hashTypedDataV4().
  *      All signature verification supports both EOA (65-byte packed r,s,v) and smart contract
  *      wallets (Gnosis Safe, ERC-4337) via SignatureChecker + EIP-1271.
+ *
+ *      Accounts with code — including EIP-7702 delegated EOAs — are validated exclusively via
+ *      ERC-1271; raw ECDSA signatures from them are never accepted. This is intentional: a
+ *      delegated account may have rotated or disabled its root key, or enforce policies through
+ *      its delegate, and an ECDSA fallback would bypass them. Delegates that do not implement
+ *      ERC-1271 cannot use these authorization flows.
  */
 abstract contract EIP3009 is IEIP3009, ERC20, EIP712 {
     // ---------------

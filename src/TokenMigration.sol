@@ -2,20 +2,22 @@
 pragma solidity ^0.8.26;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
+import {PauseRoles} from "./helpers/Roles.sol";
 
 /**
  * @title TokenMigration
  * @author Telcoin Association
  * @dev Migration contract for swapping oldToken (2 decimals) to TelcoinV3 (18 decimals) at 1:1 rate.
- * Old tokens are escrowed in this contract during migration and can be withdrawn by the owner
+ * Old tokens are escrowed in this contract during migration and can be withdrawn by the admin
  * after a secondary withdrawal delay following migration expiry.
  */
-contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
+contract TokenMigration is Pausable, PauseRoles, AccessControlEnumerable, ReentrancyGuardTransient {
     using SafeERC20 for IERC20Mintable;
 
     /// @notice Decimal difference multiplier (10^16)
@@ -32,11 +34,15 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     /// revert if block.timestamp is beyond migrationExpiry.
     uint256 public migrationExpiry;
 
+    /// @notice Set permanently once escrowed old tokens are withdrawn.
+    bool public migrationClosed;
+
     // events
     event TokensMigrated(address indexed user, uint256 amount);
     event StuckTokensRecovered(address indexed token, address indexed to, uint256 amount);
     event MigrationExpirySet(uint256 oldExpiry, uint256 newExpiry);
     event OldTokensWithdrawn(address indexed to, uint256 amount);
+    event MigrationClosed();
 
     // errors
     error InvalidAmount();
@@ -44,26 +50,26 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     error ZeroAddress();
     error SameAddress();
     error MigrationConcluded();
-    error CannotRenounceOwnership();
+    error CannotRenounceRole();
     error WithdrawalLocked();
     error CannotRecoverOldToken();
 
     /**
-     * @dev Constructor
+     * @dev Constructor.
      * @param _oldToken Address of the old TEL token (2 decimals)
      * @param _telcoinV3 Address of the new TelcoinV3 token (18 decimals)
-     * @param _initialOwner Owner address of this contract
+     * @param _admin Address of the contract admin (receives DEFAULT_ADMIN_ROLE)
      * @param _migrationDuration Duration of migration in seconds
      * @param _withdrawalDelay Duration after migrationExpiry before old tokens can be withdrawn
      */
     constructor(
-        address _oldToken, 
+        address _oldToken,
         address _telcoinV3,
-        address _initialOwner,
+        address _admin,
         uint256 _migrationDuration,
         uint256 _withdrawalDelay
-    ) Ownable(_initialOwner) {
-        if (_oldToken == address(0) || _telcoinV3 == address(0)) revert ZeroAddress();
+    ) {
+        if (_oldToken == address(0) || _telcoinV3 == address(0) || _admin == address(0)) revert ZeroAddress();
         if (_oldToken == _telcoinV3) revert SameAddress();
         if (_migrationDuration == 0) revert InvalidExpiry();
 
@@ -72,6 +78,8 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
 
         migrationExpiry = block.timestamp + _migrationDuration;
         withdrawalDelay = _withdrawalDelay;
+
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }
 
     /**
@@ -80,7 +88,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      * @return amountNewToken Amount of tokens minted in response to migration
      */
     function migrate() external nonReentrant whenNotPaused returns (uint256 amountNewToken) {
-        if (block.timestamp >= migrationExpiry) revert MigrationConcluded();
+        if (migrationClosed || block.timestamp >= migrationExpiry) revert MigrationConcluded();
         // user must have sufficient balance
         uint256 userBalance = oldToken.balanceOf(msg.sender);
         if (userBalance == 0) revert InvalidAmount();
@@ -99,14 +107,21 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     /**
      * @notice Withdraw all escrowed old tokens after the withdrawal delay has passed.
      * @dev Can only be called by the owner after migrationExpiry + withdrawalDelay.
+     *      Permanently closes migration so withdrawn old tokens can never be recycled
+     *      through migrate() to mint additional new tokens.
      * @param destination The address to send the escrowed old tokens
      */
-    function withdrawOldTokens(address destination) external onlyOwner {
+    function withdrawOldTokens(address destination) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (destination == address(0)) revert ZeroAddress();
         if (block.timestamp < migrationExpiry + withdrawalDelay) revert WithdrawalLocked();
 
         uint256 balance = oldToken.balanceOf(address(this));
         if (balance == 0) revert InvalidAmount();
+
+        if (!migrationClosed) {
+            migrationClosed = true;
+            emit MigrationClosed();
+        }
 
         oldToken.safeTransfer(destination, balance);
         emit OldTokensWithdrawn(destination, balance);
@@ -114,10 +129,12 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
 
     /**
      * @dev Allows the admin to set the migration expiry date - when migration will be concluded.
-     * @notice New migration timestamp must be greater than the current expiry
+     * @notice New migration timestamp must be greater than the current expiry. Reverts once
+     * migration has been permanently closed by a withdrawal of the escrowed old tokens.
      * @param newMigrationExpiry New timestamp when migrations will be concluded
      */
-    function setMigrationExpiry(uint256 newMigrationExpiry) external onlyOwner {
+    function setMigrationExpiry(uint256 newMigrationExpiry) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (migrationClosed) revert MigrationConcluded();
         if (newMigrationExpiry == 0 || migrationExpiry > newMigrationExpiry) revert InvalidExpiry();
         emit MigrationExpirySet(migrationExpiry, newMigrationExpiry);
         migrationExpiry = newMigrationExpiry;
@@ -130,7 +147,7 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
      * @param tokenAddress The address of the token to recover
      * @param amount Amount of tokens to recover from this contract
      */
-    function recoverERC20(address destination, address tokenAddress, uint256 amount) external onlyOwner {
+    function recoverERC20(address destination, address tokenAddress, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (destination == address(0) || tokenAddress == address(0)) revert ZeroAddress();
         if (tokenAddress == address(oldToken)) revert CannotRecoverOldToken();
 
@@ -145,24 +162,36 @@ contract TokenMigration is Ownable2Step, Pausable, ReentrancyGuardTransient {
     }
 
     /**
-     * @dev Pause the migration (owner only)
+     * @dev Pause the migration. Separated from admin so a low-latency incident responder
+     * can halt migration without holding administrative authority.
      */
-    function pause() external onlyOwner {
+    function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
     }
 
     /**
-     * @dev Unpause the migration (owner only)
+     * @dev Unpause the migration. High-trust action held separately from PAUSER_ROLE.
      */
-    function unpause() external onlyOwner {
+    function unpause() external onlyRole(UNPAUSER_ROLE) {
         _unpause();
     }
 
     /**
-     * @notice Disabled - renouncing ownership would permanently prevent pausing, expiry extension, and token recovery.
+     * @notice Disabled — roles may only be revoked by an admin, never self-renounced.
      */
-    function renounceOwnership() public view override onlyOwner {
-        revert CannotRenounceOwnership();
+    function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
+        revert CannotRenounceRole();
+    }
+
+    /**
+     * @notice Revoke a role, except an admin removing its own DEFAULT_ADMIN_ROLE.
+     * @dev Mirrors the TelcoinV3/MigrationVault guard: prevents the sole admin from
+     *      permanently disabling expiry management, escrow withdrawal, and recovery.
+     *      Admin handover: grant the new admin, then the new admin revokes the old one.
+     */
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
+        if (role == DEFAULT_ADMIN_ROLE && account == msg.sender) revert CannotRenounceRole();
+        super.revokeRole(role, account);
     }
 
     /**
