@@ -71,6 +71,29 @@ contract TelcoinBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() rejects nonempty composeMsg — SEND_AND_CALL messages bypass the SEND-only
+    ///         enforced options, so composition is not supported on the Telcoin OFT mesh.
+    function test_LzSend_RevertNonEmptyComposeMsg() public {
+        SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, _createBasicOptions());
+        sendParam.composeMsg = abi.encode("compose payload");
+
+        vm.startPrank(user1);
+        vm.expectRevert(TelcoinBridge.ComposeNotSupported.selector);
+        bridgeA.send{value: 0.1 ether}(sendParam, MessagingFee(0.1 ether, 0), user1);
+        vm.stopPrank();
+    }
+
+    /// @notice Even a single-byte composeMsg is rejected.
+    function test_LzSend_RevertSingleByteComposeMsg() public {
+        SendParam memory sendParam = _createSendParam(EID_B, user1, 1000 ether, _createBasicOptions());
+        sendParam.composeMsg = hex"01";
+
+        vm.startPrank(user1);
+        vm.expectRevert(TelcoinBridge.ComposeNotSupported.selector);
+        bridgeA.send{value: 0.1 ether}(sendParam, MessagingFee(0.1 ether, 0), user1);
+        vm.stopPrank();
+    }
+
     /// @notice send() reverts with NoPeer when no peer is configured for the destination EID.
     function test_LzSend_RevertNoPeer() public {
         // Deploy a bridge with no peer set

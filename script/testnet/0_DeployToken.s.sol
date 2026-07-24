@@ -31,15 +31,13 @@ contract DeployToken is BaseDeployToken {
         allChains.push(TokenChainConfig({
             chainName: "eth-sepolia",
             rpcUrl: vm.envString("ETH_SEPOLIA_RPC_URL"),
-            evmChainId: ETH_SEPOLIA_CHAIN_ID,
-            initialSupply: 100_000_000 ether
+            evmChainId: ETH_SEPOLIA_CHAIN_ID
         }));
 
         allChains.push(TokenChainConfig({
             chainName: "base-sepolia",
             rpcUrl: vm.envString("BASE_SEPOLIA_RPC_URL"),
-            evmChainId: BASE_SEPOLIA_CHAIN_ID,
-            initialSupply: 100_000_000 ether
+            evmChainId: BASE_SEPOLIA_CHAIN_ID
         }));
     }
 }

@@ -17,7 +17,7 @@ import {Roles} from "../../src/helpers/Roles.sol";
 /// @dev    Step 0 in the deployment pipeline. Children populate configuration in setUp().
 ///
 ///         Per chain (single MultiSend):
-///         1. Deploy TelcoinV3 (mints initialSupply to _admin)
+///         1. Deploy TelcoinV3
 ///         2. Grant PAUSER_ROLE to _pauser
 ///         3. Grant UNPAUSER_ROLE to _unpauser
 ///         4. Save address to deployments JSON
@@ -42,7 +42,6 @@ abstract contract BaseDeployToken is DeployBase, Roles {
         string chainName;
         string rpcUrl;
         uint256 evmChainId;
-        uint256 initialSupply;
     }
 
     TokenChainConfig[] internal allChains;
@@ -88,7 +87,7 @@ abstract contract BaseDeployToken is DeployBase, Roles {
         // 1. Deploy TelcoinV3 (batched)
         address token = _addCreate3ToBatch(
             _telcoinV3Salt,
-            bytes.concat(type(TelcoinV3).creationCode, abi.encode(chain.initialSupply, _admin)),
+            bytes.concat(type(TelcoinV3).creationCode, abi.encode(_admin)),
             "Deploy TelcoinV3"
         );
 

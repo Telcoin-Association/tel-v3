@@ -31,7 +31,7 @@ library SafeMath {
     }
 }
  
-contract TelcoinV2 {
+contract Telcoin {
     using SafeMath for uint256;
 
     event Transfer(address indexed _from, address indexed _to, uint _value);

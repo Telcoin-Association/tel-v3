@@ -74,6 +74,31 @@ contract NativeBridgeLzSendTest is BaseSetup {
         vm.stopPrank();
     }
 
+    /// @notice send() rejects nonempty composeMsg — SEND_AND_CALL messages bypass the SEND-only
+    ///         enforced options, so composition is not supported on the Telcoin OFT mesh.
+    function test_NativeSend_RevertNonEmptyComposeMsg() public {
+        uint256 bridgeAmount = 10 ether;
+        SendParam memory sendParam = _createSendParam(EID_A, user1, bridgeAmount, _createBasicOptions());
+        sendParam.composeMsg = abi.encode("compose payload");
+
+        vm.startPrank(user1);
+        vm.expectRevert(NativeBridge.ComposeNotSupported.selector);
+        nativeBridge.send{value: 0.1 ether + bridgeAmount}(sendParam, MessagingFee(0.1 ether, 0), user1);
+        vm.stopPrank();
+    }
+
+    /// @notice Even a single-byte composeMsg is rejected.
+    function test_NativeSend_RevertSingleByteComposeMsg() public {
+        uint256 bridgeAmount = 10 ether;
+        SendParam memory sendParam = _createSendParam(EID_A, user1, bridgeAmount, _createBasicOptions());
+        sendParam.composeMsg = hex"01";
+
+        vm.startPrank(user1);
+        vm.expectRevert(NativeBridge.ComposeNotSupported.selector);
+        nativeBridge.send{value: 0.1 ether + bridgeAmount}(sendParam, MessagingFee(0.1 ether, 0), user1);
+        vm.stopPrank();
+    }
+
     /// @notice send() reverts with NoPeer when no peer is configured for the destination EID.
     function test_NativeSend_RevertNoPeer() public {
         // Deploy a NativeBridge with no peer set for EID_A

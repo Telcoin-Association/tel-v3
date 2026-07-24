@@ -14,26 +14,16 @@ contract TelcoinV3Test is TelcoinV3BaseSetup {
     // Supply Cap Tests
     // ---------------------
 
-    /// @dev Constructor succeeds when initialSupply_ is zero (no initial mint).
+    /// @dev The token mints no initial supply at construction — all supply enters via mint().
     function test_Constructor_ZeroSupply() public {
-        TelcoinV3 t = new TelcoinV3(0, owner);
+        TelcoinV3 t = new TelcoinV3(owner);
         assertEq(t.totalSupply(), 0);
     }
 
-    /// @dev Constructor succeeds when initialSupply_ is exactly the cap.
-    function test_Constructor_SupplyAtCap() public {
-        TelcoinV3 t = new TelcoinV3(token.MIGRATION_SUPPLY_CAP(), owner);
-        assertEq(t.totalSupply(), token.MIGRATION_SUPPLY_CAP());
-    }
-
-    /// @dev Constructor reverts when initialSupply_ exceeds the 100B cap.
-    function test_RevertIf_Constructor_SupplyExceedsCap() public {
-        // Cache the cap before arming vm.expectRevert — evaluating token.MIGRATION_SUPPLY_CAP()
-        // inline would itself be the "next call" that Foundry intercepts, consuming the expectation
-        // before the constructor is ever reached.
-        uint256 cap = token.MIGRATION_SUPPLY_CAP();
-        vm.expectRevert(TelcoinV3.SupplyCapExceeded.selector);
-        new TelcoinV3(cap + 1, owner);
+    /// @dev Constructor reverts when admin is the zero address (would permanently brick role admin).
+    function test_RevertIf_Constructor_ZeroAdmin() public {
+        vm.expectRevert(TelcoinV3.ZeroAddress.selector);
+        new TelcoinV3(address(0));
     }
 
     /// @dev mint() succeeds when the resulting total supply equals the cap exactly.
@@ -314,5 +304,45 @@ contract TelcoinV3Test is TelcoinV3BaseSetup {
         vm.prank(owner);
         vm.expectRevert(TelcoinV3.CannotRenounceRole.selector);
         token.renounceRole(adminRole, owner);
+    }
+
+    /// @notice An admin cannot bypass the renounce ban by revoking its own DEFAULT_ADMIN_ROLE.
+    function test_RevertIf_AdminSelfRevokesAdminRole() public {
+        bytes32 adminRole = token.DEFAULT_ADMIN_ROLE();
+        vm.prank(owner);
+        vm.expectRevert(TelcoinV3.CannotRenounceRole.selector);
+        token.revokeRole(adminRole, owner);
+    }
+
+    /// @notice An admin may still revoke its own non-admin roles (recoverable via re-grant).
+    function test_AdminCanSelfRevokeNonAdminRole() public {
+        vm.startPrank(owner);
+        token.grantRole(MINTER_ROLE, owner);
+        assertTrue(token.hasRole(MINTER_ROLE, owner));
+
+        token.revokeRole(MINTER_ROLE, owner);
+        assertFalse(token.hasRole(MINTER_ROLE, owner));
+        vm.stopPrank();
+    }
+
+    /// @notice Admin handover: grant the new admin, then the new admin revokes the old one.
+    function test_AdminHandover() public {
+        address newAdmin = makeAddr("newAdmin");
+        bytes32 adminRole = token.DEFAULT_ADMIN_ROLE();
+
+        vm.prank(owner);
+        token.grantRole(adminRole, newAdmin);
+
+        // new admin revokes the old admin (revoker != target, so the guard permits it)
+        vm.prank(newAdmin);
+        token.revokeRole(adminRole, owner);
+
+        assertFalse(token.hasRole(adminRole, owner));
+        assertTrue(token.hasRole(adminRole, newAdmin));
+
+        // new admin retains full role administration
+        vm.prank(newAdmin);
+        token.grantRole(MINTER_ROLE, user);
+        assertTrue(token.hasRole(MINTER_ROLE, user));
     }
 }

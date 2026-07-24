@@ -9,7 +9,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
-import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
 import {IERC20Mintable} from "./interfaces/IERC20Mintable.sol";
 import {EIP3009} from "./helpers/EIP3009.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -36,13 +35,11 @@ contract TelcoinV3 is IERC20Mintable, EIP3009, ERC20Permit, Pausable, Roles, Acc
     error ZeroAmount();
 
     /**
-     * @dev Constructor that optionally mints an initial supply to the admin address
-     * @param initialSupply_ The initial supply to mint on this chain. Tokens go to admin. Can be 0.
+     * @dev Constructor. Assigns initial state for TelcoinV3.
      * @param admin_ The owner (Telcoin TAO Governance Safe)
      */
-    constructor(uint256 initialSupply_, address admin_) ERC20("Telcoin", "TEL") ERC20Permit("Telcoin") {
-        if (initialSupply_ > MIGRATION_SUPPLY_CAP) revert SupplyCapExceeded();
-        _mint(admin_, initialSupply_);
+    constructor(address admin_) ERC20("Telcoin", "TEL") ERC20Permit("Telcoin") {
+        if (admin_ == address(0)) revert ZeroAddress();
         _grantRole(DEFAULT_ADMIN_ROLE, admin_);
     }
 
@@ -122,6 +119,12 @@ contract TelcoinV3 is IERC20Mintable, EIP3009, ERC20Permit, Pausable, Roles, Acc
      * @dev Accepts any signature format — EOA (65 bytes packed r,s,v) or multi-sig blobs
      *      (Gnosis Safe concatenated signatures). Uses SignatureChecker which routes to
      *      ECDSA.recover for EOAs or IERC1271.isValidSignature for contract wallets.
+     *
+     *      Accounts with code — including EIP-7702 delegated EOAs — are validated exclusively
+     *      via ERC-1271; raw ECDSA signatures from them are never accepted. This is intentional:
+     *      a delegated account may have rotated or disabled its root key, or enforce policies
+     *      through its delegate, and an ECDSA fallback would bypass them. Delegates that do not
+     *      implement ERC-1271 cannot use permit.
      */
     function permit(
         address owner_,
@@ -155,6 +158,18 @@ contract TelcoinV3 is IERC20Mintable, EIP3009, ERC20Permit, Pausable, Roles, Acc
      */
     function renounceRole(bytes32, address) public pure override(AccessControl, IAccessControl) {
         revert CannotRenounceRole();
+    }
+
+    /**
+     * @notice Revoke a role, except an admin removing its own DEFAULT_ADMIN_ROLE.
+     * @dev Closes the renounceRole bypass: DEFAULT_ADMIN_ROLE administers itself, so a sole
+     *      admin could otherwise self-revoke and permanently disable role administration and
+     *      rescue functions. Admin handover remains possible — grant the new admin, then the
+     *      new admin revokes the old one.
+     */
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
+        if (role == DEFAULT_ADMIN_ROLE && account == msg.sender) revert CannotRenounceRole();
+        super.revokeRole(role, account);
     }
 
     // --------

@@ -24,6 +24,8 @@ contract DeployBridges is BaseDeployBridges {
         _initializeSafeMultiSig();
 
         _admin = ADMIN;
+        _pauser = PAUSER;
+        _unpauser = UNPAUSER;
         _mintBurnWrapperSalt = keccak256("RAW_MINT_BURN_WRAPPER_SALT_V3");
         _bridgeSalt = keccak256("RAW_TELCOIN_BRIDGE_SALT_V3");
 

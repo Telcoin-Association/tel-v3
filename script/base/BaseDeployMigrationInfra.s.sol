@@ -117,6 +117,15 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
             "Deploy TokenMigration"
         );
 
+        // 2b. Grant PAUSER_ROLE/UNPAUSER_ROLE on TokenMigration (batched, post-deploy)
+        require(_pauser != address(0), "Pauser not configured");
+        require(_unpauser != address(0), "Unpauser not configured");
+        console.log("  [batch] Grant PAUSER_ROLE / UNPAUSER_ROLE on TokenMigration");
+        _batchTargets.push(migrator);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (PAUSER_ROLE, _pauser)));
+        _batchTargets.push(migrator);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (UNPAUSER_ROLE, _unpauser)));
+
         // 3. Deploy MigrationVault impl (batched)
         address implAddr = _addCreate3ToBatch(
             _migrationVaultImplSalt,

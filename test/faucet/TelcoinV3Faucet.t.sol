@@ -20,7 +20,7 @@ contract TelcoinV3FaucetTest is Test, Roles {
 
     function setUp() public {
         vm.prank(admin);
-        token = new TelcoinV3(0, admin);
+        token = new TelcoinV3(admin);
 
         faucet = new TelcoinV3Faucet(address(token), DRIP_AMOUNT, COOLDOWN, admin);
 

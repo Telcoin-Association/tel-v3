@@ -49,7 +49,7 @@ contract MigrationVaultFuzzTest is Test, Roles {
 
         // Deploy TelcoinV3 with no initial supply (all minted to vault)
         vm.prank(admin);
-        newToken = new TelcoinV3(0, admin);
+        newToken = new TelcoinV3(admin);
 
         // Deploy MigrationVault behind UUPS proxy
         MigrationVault implementation = new MigrationVault(address(oldToken), address(newToken));
