@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDeployFaucets} from "../base/BaseDeployFaucets.s.sol";
 import "./utils/Constants.sol";
 import "./utils/Roles.sol";
+import "./utils/Salts.sol";
 
 /// @title DeployFaucets (Testnet)
 /// @notice Deploys TelcoinV3Faucet + LegacyTelcoinFaucet to testnet chains via Gnosis Safe.
@@ -29,8 +30,8 @@ contract DeployFaucets is BaseDeployFaucets {
         _legacyDripAmount = 1_000 * 1e2; // 1,000 TEL v2 (2 decimals)
         _cooldown = 1 hours;
 
-        _v3FaucetSalt = keccak256("RAW_TELCOIN_V3_FAUCET_SALT_V1");
-        _legacyFaucetSalt = keccak256("RAW_LEGACY_TELCOIN_FAUCET_SALT_V1");
+        _v3FaucetSalt = TELCOIN_V3_FAUCET_SALT;
+        _legacyFaucetSalt = LEGACY_TELCOIN_FAUCET_SALT;
 
         allChains.push(FaucetChainConfig({
             chainName: "eth-sepolia",

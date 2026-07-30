@@ -157,7 +157,7 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
 
         // 8. Save addresses (only on broadcast to avoid polluting JSON during simulation)
         if (vm.isContext(VmSafe.ForgeContext.ScriptBroadcast)) {
-            _saveDeploymentAddress(chain.chainName, "TelcoinMigration", migrator);
+            _saveDeploymentAddress(chain.chainName, "TokenMigration", migrator);
             _saveDeploymentAddress(chain.chainName, "MigrationVault", proxyAddr);
         }
     }

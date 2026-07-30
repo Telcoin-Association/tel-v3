@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDeployToken} from "../base/BaseDeployToken.s.sol";
 import "./utils/Constants.sol";
 import "./utils/Roles.sol";
+import "./utils/Salts.sol";
 
 /// @title DeployToken (Testnet)
 /// @notice Deploys TelcoinV3 to testnet chains via Gnosis Safe.
@@ -26,7 +27,7 @@ contract DeployToken is BaseDeployToken {
         _admin = ADMIN;
         _pauser = PAUSER;
         _unpauser = UNPAUSER;
-        _telcoinV3Salt = keccak256("RAW_TELCOIN_V3_SALT_V3");
+        _telcoinV3Salt = TELCOIN_V3_SALT;
 
         allChains.push(TokenChainConfig({
             chainName: "eth-sepolia",
