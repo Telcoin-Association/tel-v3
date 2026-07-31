@@ -39,7 +39,7 @@ contract MigrateTokens is DeployBase {
     function run() public {
         address legacyTelcoin = _loadDeploymentAddress(CHAIN_ALIAS, "TelcoinLegacy");
         address telcoinV3 = _loadDeploymentAddress(CHAIN_ALIAS, "TelcoinV3");
-        address migrationContract = _loadDeploymentAddress(CHAIN_ALIAS, "TelcoinMigration");
+        address migrationContract = _loadDeploymentAddress(CHAIN_ALIAS, "TokenMigration");
 
         require(legacyTelcoin != address(0), "Legacy Telcoin not deployed");
         require(telcoinV3 != address(0), "TelcoinV3 not deployed");

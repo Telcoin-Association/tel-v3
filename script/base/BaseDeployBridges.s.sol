@@ -51,6 +51,8 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
     struct RuntimeData {
         uint256 forkId;
         address bridgeAddress;
+        address[] batchTargets;
+        bytes[] batchDatas;
     }
 
     BridgeChainConfig[] internal allChains;
@@ -68,7 +70,8 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
     function run() public {
         uint256 len = allChains.length;
 
-        // First pass: deploy bridges and collect addresses
+        // First pass: deploy bridges and collect addresses. Each chain's batched txns are
+        // stashed per chain — the shared batch arrays must not leak across chains.
         for (uint256 i; i < len; ++i) {
             uint256 forkId = vm.createSelectFork(allChains[i].rpcUrl);
             currentNonce = safe.getNonce();
@@ -77,17 +80,23 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
 
             address bridgeAddress = _collectDeploys(allChains[i]);
 
-            getRuntimeData[allChains[i].rpcUrl] = RuntimeData({
-                forkId: forkId,
-                bridgeAddress: bridgeAddress
-            });
+            RuntimeData storage runtimeData = getRuntimeData[allChains[i].rpcUrl];
+            runtimeData.forkId = forkId;
+            runtimeData.bridgeAddress = bridgeAddress;
+            runtimeData.batchTargets = _batchTargets;
+            runtimeData.batchDatas = _batchDatas;
+            delete _batchTargets;
+            delete _batchDatas;
         }
 
-        // Second pass: add peer config to batch and flush everything per chain
+        // Second pass: restore the chain's own batch, add peer config, and flush per chain
         for (uint256 i; i < len; ++i) {
-            string memory rpcUrl = allChains[i].rpcUrl;
-            vm.selectFork(getRuntimeData[rpcUrl].forkId);
+            RuntimeData storage runtimeData = getRuntimeData[allChains[i].rpcUrl];
+            vm.selectFork(runtimeData.forkId);
             currentNonce = safe.getNonce();
+
+            _batchTargets = runtimeData.batchTargets;
+            _batchDatas = runtimeData.batchDatas;
 
             _collectPeers(i, len);
 
@@ -160,9 +169,10 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (BURNER_ROLE, wrapper)));
             }
 
-            // Authorize bridge on wrapper (reverts if already set)
+            // Authorize bridge on wrapper (reverts if already set).
+            // A freshly batched wrapper has no code yet — skip the staticcall and always authorize.
             MintBurnWrapper wrapperContract = MintBurnWrapper(wrapper);
-            if (wrapperContract.bridge() != bridge) {
+            if (wrapper.code.length == 0 || wrapperContract.bridge() != bridge) {
                 console.log("  [batch] Authorize bridge on MintBurnWrapper");
                 _batchTargets.push(wrapper);
                 _batchDatas.push(abi.encodeCall(MintBurnWrapper.authorizeBridge, (bridge)));
@@ -201,8 +211,9 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
             bytes32 peerAddress = bytes32(uint256(uint160(getRuntimeData[allChains[j].rpcUrl].bridgeAddress)));
             uint32 peerEid = allChains[j].lzChainId;
 
-            // In simulation we can check current peers; in broadcast the bridge may not exist yet
-            if (!_isSimulation || IOAppCore(bridgeAddr).peers(peerEid) != peerAddress) {
+            // Only check current peers when the bridge already has code (simulation against a
+            // live bridge); a freshly batched bridge has none and the staticcall would revert.
+            if (bridgeAddr.code.length == 0 || !_isSimulation || IOAppCore(bridgeAddr).peers(peerEid) != peerAddress) {
                 console.log("  [batch] setPeer(%d, %s)", peerEid, allChains[j].chainName);
                 _batchTargets.push(bridgeAddr);
                 _batchDatas.push(abi.encodeCall(IOAppCore.setPeer, (peerEid, peerAddress)));
