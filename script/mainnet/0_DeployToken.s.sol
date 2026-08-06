@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDeployToken} from "../base/BaseDeployToken.s.sol";
 import "./utils/Constants.sol";
 import "./utils/Roles.sol";
+import "./utils/Salts.sol";
 
 /// @title DeployToken (Mainnet)
 /// @notice Deploys TelcoinV3 to mainnet chains via Gnosis Safe.
@@ -21,12 +22,12 @@ import "./utils/Roles.sol";
 /// ```
 contract DeployToken is BaseDeployToken {
     function setUp() public {
-        _initializeSafe();
+        _initializeSafeMultiSig();
 
         _admin = ADMIN;
         _pauser = PAUSER;
         _unpauser = UNPAUSER;
-        _telcoinV3Salt = keccak256("RAW_TELCOIN_V3_SALT_MAINNET");
+        _telcoinV3Salt = TELCOIN_V3_SALT;
 
         // Ethereum Mainnet
         allChains.push(TokenChainConfig({
