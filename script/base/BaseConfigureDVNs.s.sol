@@ -94,7 +94,9 @@ abstract contract BaseConfigureDVNs is DeployBase {
                 block.chainid == chain.evmChainId,
                 string.concat("Chain ID mismatch: expected ", vm.toString(chain.evmChainId), " but got ", vm.toString(block.chainid))
             );
-            currentNonce = safe.getNonce();
+            // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
+            // Safe txns (on-chain nonce doesn't advance until execution).
+            currentNonce = safe.getNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
 
             string memory bridgeKey = chain.mainChain ? "NativeBridge" : "TelcoinBridge";
             address bridge = _loadDeploymentAddress(chain.chainName, bridgeKey);

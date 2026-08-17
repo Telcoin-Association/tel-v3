@@ -19,10 +19,14 @@ import {Roles} from "../../src/helpers/Roles.sol";
 ///
 ///         Per chain (single MultiSend):
 ///         1. Deploy TelcoinV3Faucet
-///         2. Deploy LegacyTelcoinFaucet
+///         2. Deploy LegacyTelcoinFaucet — only if not already recorded in the
+///            deployments JSON. Like the legacy token, the legacy faucet is tied
+///            to TelcoinLegacy (not TelcoinV3), so it survives full redeploys of
+///            the v3 stack. NOTE: a freshly deployed legacy faucet holds no
+///            legacy TEL; it must be funded separately (legacy TEL is fixed
+///            supply — no minting).
 ///         3. Grant MINTER_ROLE to TelcoinV3Faucet on TelcoinV3
-///         4. Fund LegacyTelcoinFaucet with legacy TEL
-///         5. Save addresses to deployments JSON
+///         4. Save addresses to deployments JSON
 abstract contract BaseDeployFaucets is DeployBase, Roles {
     using Safe for *;
 
@@ -61,7 +65,9 @@ abstract contract BaseDeployFaucets is DeployBase, Roles {
 
         for (uint256 i; i < len; ++i) {
             vm.createSelectFork(allChains[i].rpcUrl);
-            currentNonce = safe.getNonce();
+            // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
+            // Safe txns (on-chain nonce doesn't advance until execution).
+            currentNonce = safe.getNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
 
             console.log("=== Deploy Faucets on %s ===", allChains[i].chainName);
 
@@ -102,15 +108,22 @@ abstract contract BaseDeployFaucets is DeployBase, Roles {
             "Deploy TelcoinV3Faucet"
         );
 
-        // 2. Deploy LegacyTelcoinFaucet (batched)
-        address legacyFaucet = _addCreate3ToBatch(
-            _legacyFaucetSalt,
-            bytes.concat(
-                type(LegacyTelcoinFaucet).creationCode,
-                abi.encode(legacyTel, _legacyDripAmount, _cooldown, _admin)
-            ),
-            "Deploy LegacyTelcoinFaucet"
-        );
+        // 2. Deploy LegacyTelcoinFaucet only if not already recorded (batched).
+        //    An existing legacy faucet keeps working across v3-stack redeploys
+        //    and stays funded; a fresh one starts empty and needs funding.
+        address legacyFaucet = _loadDeploymentAddress(chain.chainName, "LegacyTelcoinFaucet");
+        if (legacyFaucet == address(0)) {
+            legacyFaucet = _addCreate3ToBatch(
+                _legacyFaucetSalt,
+                bytes.concat(
+                    type(LegacyTelcoinFaucet).creationCode,
+                    abi.encode(legacyTel, _legacyDripAmount, _cooldown, _admin)
+                ),
+                "Deploy LegacyTelcoinFaucet"
+            );
+        } else {
+            console.log("  LegacyTelcoinFaucet already deployed at %s, keeping it", legacyFaucet);
+        }
 
         // 3. Grant MINTER_ROLE to TelcoinV3Faucet on TelcoinV3 (batched)
         console.log("  [batch] Grant MINTER_ROLE to TelcoinV3Faucet");
