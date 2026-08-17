@@ -22,7 +22,7 @@ import "./utils/Constants.sol";
 /// ```
 contract ConfigureDVNs is BaseConfigureDVNs {
     function setUp() public {
-        _initializeSafe();
+        _initializeSafeMultiSig();
 
         // --- DVN Parameters ---
         _maxMessageSize = 10000;

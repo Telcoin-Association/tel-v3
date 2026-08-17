@@ -4,6 +4,7 @@ pragma solidity ^0.8.30;
 import {BaseDeployBridges} from "../base/BaseDeployBridges.s.sol";
 import "./utils/Constants.sol";
 import "./utils/Roles.sol";
+import "./utils/Salts.sol";
 
 /// @title DeployBridges (Mainnet)
 /// @notice Deploys bridge infrastructure to mainnet chains via Gnosis Safe.
@@ -21,14 +22,14 @@ import "./utils/Roles.sol";
 /// ```
 contract DeployBridges is BaseDeployBridges {
     function setUp() public {
-        _initializeSafe();
+        _initializeSafeMultiSig();
 
         _admin = ADMIN;
         _pauser = PAUSER;
         _unpauser = UNPAUSER;
-        _mintBurnWrapperSalt = keccak256("RAW_MINT_BURN_WRAPPER_SALT_MAINNET");
-        _bridgeSalt = keccak256("RAW_TELCOIN_BRIDGE_SALT_MAINNET");
-        _nativeBridgeSalt = keccak256("RAW_NATIVE_BRIDGE_SALT_MAINNET");
+        _mintBurnWrapperSalt = MINT_BURN_WRAPPER_SALT;
+        _bridgeSalt = TELCOIN_BRIDGE_SALT;
+        _nativeBridgeSalt = NATIVE_BRIDGE_SALT;
 
         // Ethereum Mainnet (satellite)
         allChains.push(BridgeChainConfig({
