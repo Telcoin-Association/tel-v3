@@ -74,7 +74,9 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
         // stashed per chain — the shared batch arrays must not leak across chains.
         for (uint256 i; i < len; ++i) {
             uint256 forkId = vm.createSelectFork(allChains[i].rpcUrl);
-            currentNonce = safe.getNonce();
+            // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
+            // Safe txns (on-chain nonce doesn't advance until execution).
+            currentNonce = safe.getNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
 
             console.log("=== Deploy Bridges on %s ===", allChains[i].chainName);
 
@@ -93,7 +95,7 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
         for (uint256 i; i < len; ++i) {
             RuntimeData storage runtimeData = getRuntimeData[allChains[i].rpcUrl];
             vm.selectFork(runtimeData.forkId);
-            currentNonce = safe.getNonce();
+            currentNonce = safe.getNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
 
             _batchTargets = runtimeData.batchTargets;
             _batchDatas = runtimeData.batchDatas;

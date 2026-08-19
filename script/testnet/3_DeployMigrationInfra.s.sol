@@ -20,6 +20,15 @@ import "./utils/Salts.sol";
 /// ```
 /// forge script script/testnet/3_DeployMigrationInfra.s.sol --rpc-url $RPC_URL --broadcast --ffi -vvvv
 /// ```
+/// ## Queueing behind pending Safe txns
+///
+/// Proposal nonces derive from the on-chain Safe nonce, which only advances on
+/// execution. If an earlier step is proposed but not yet executed, broadcasting
+/// this step would collide at the same nonce. Set SAFE_NONCE_OFFSET to the
+/// number of pending (unexecuted) proposals so this one queues behind them:
+/// ```
+/// SAFE_NONCE_OFFSET=1 SAFE_BROADCAST=true forge script <this script> --rpc-url $RPC_URL --broadcast --ffi -vvvv
+/// ```
 contract DeployMigrationInfra is BaseDeployMigrationInfra {
     function setUp() public {
         _initializeSafeMultiSig();
