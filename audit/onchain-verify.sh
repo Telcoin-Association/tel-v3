@@ -5,6 +5,18 @@
 # roles, ownership, proxy wiring, and key config against what the deploy
 # scripts intend. Read-only (cast call/storage/code) — never broadcasts.
 #
+# Why this exists: CREATE2/CREATE3 deploys plus a separate post-deploy
+# initializer call (MigrationVault and StakingModule are both upgradeable
+# proxies with `initialize()`) are a known target for front-running — if
+# anyone else's transaction calls `initialize()` or grabs a role before the
+# legitimate deployer's batched Safe transaction lands, they can seize
+# admin/owner/role control of an otherwise-correctly-coded contract, with
+# no bug in the source at all. This script doesn't prevent that; it catches
+# it after the fact by independently re-deriving who *should* hold every
+# role/owner slot (from source + deploy scripts) and then reading who
+# *actually* does, live. A mismatch here is the signature of a successful
+# front-run or silent drift, not just a formatting issue.
+#
 # Requires: foundry (`cast` on PATH). No API keys needed — uses public RPCs
 # by default; override any of them via env vars if you hit rate limits:
 #   ETH_RPC_URL, BASE_RPC_URL, POLYGON_RPC_URL, ETH_SEPOLIA_RPC_URL, BASE_SEPOLIA_RPC_URL
@@ -60,14 +72,23 @@ DEFAULT_ADMIN_ROLE=$(printf '0x%064x' 0)
 PASS=0; FAIL=0; WARN=0
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
 
-ok()   { PASS=$((PASS+1)); printf "  ${GREEN}PASS${NC}  %s\n" "$1"; }
+# ok LABEL [VALUE]  — VALUE is the actual on-chain value that just passed,
+# printed so a reviewer can sanity-check it without re-running the query.
+ok() {
+  PASS=$((PASS+1))
+  if [ -n "${2:-}" ]; then
+    printf "  ${GREEN}PASS${NC}  %s\n     value:    %s\n" "$1" "$2"
+  else
+    printf "  ${GREEN}PASS${NC}  %s\n" "$1"
+  fi
+}
 bad()  { FAIL=$((FAIL+1)); printf "  ${RED}FAIL${NC}  %s\n     expected: %s\n     actual:   %s\n" "$1" "$2" "$3"; }
-warn() { WARN=$((WARN+1)); printf "  ${YELLOW}WARN${NC}  %s (known finding, see audit-2-onchain.md)\n     value: %s\n" "$1" "$2"; }
+warn() { WARN=$((WARN+1)); printf "  ${YELLOW}WARN${NC}  %s (known finding, see audit-2-onchain.md)\n     value:    %s\n" "$1" "$2"; }
 
 # check LABEL EXPECTED ACTUAL
 check() {
   if [ "$(echo "$2" | tr '[:upper:]' '[:lower:]')" = "$(echo "$3" | tr '[:upper:]' '[:lower:]')" ]; then
-    ok "$1"
+    ok "$1" "$3"
   else
     bad "$1" "$2" "$3"
   fi
@@ -78,6 +99,16 @@ role_hash() { cast keccak "$1"; }
 # hasRole CONTRACT ROLE_NAME ROLE_HASH ACCOUNT RPC -> true/false string
 has_role() {
   cast call "$1" "hasRole(bytes32,address)(bool)" "$3" "$4" --rpc-url "$5" 2>/dev/null
+}
+
+# name_for ADDRESS -> a human-readable label for known testnet contracts, or "unrecognized address"
+name_for() {
+  case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
+    "$(echo "$MINT_BURN_WRAPPER" | tr '[:upper:]' '[:lower:]')") echo "MintBurnWrapper" ;;
+    "$(echo "$TOKEN_MIGRATION" | tr '[:upper:]' '[:lower:]')") echo "TokenMigration" ;;
+    "$(echo "$TEL_V3_FAUCET" | tr '[:upper:]' '[:lower:]')") echo "TelcoinV3Faucet" ;;
+    *) echo "unrecognized address" ;;
+  esac
 }
 
 section() { printf "\n=== %s ===\n" "$1"; }
@@ -93,15 +124,15 @@ run_mainnet() {
 
   for pair in "ethereum:$ETH_RPC_URL" "base:$BASE_RPC_URL" "polygon:$POLYGON_RPC_URL"; do
     chain=${pair%%:*}; rpc=${pair#*:}
-    section "MAINNET / $chain / TelcoinV3"
+    section "MAINNET / $chain / TelcoinV3 ($TEL_V3)"
 
     check "DEFAULT_ADMIN_ROLE holder count == 1" "1" \
       "$(cast call $TEL_V3 'getRoleMemberCount(bytes32)(uint256)' $DEFAULT_ADMIN_ROLE --rpc-url $rpc 2>/dev/null)"
-    check "DEFAULT_ADMIN_ROLE holder == governance Safe" "$ADMIN" \
+    check "DEFAULT_ADMIN_ROLE holder == governance Safe ($ADMIN)" "$ADMIN" \
       "$(cast call $TEL_V3 'getRoleMember(bytes32,uint256)(address)' $DEFAULT_ADMIN_ROLE 0 --rpc-url $rpc 2>/dev/null)"
-    check "PAUSER_ROLE holder == pauser Safe" "$PAUSER" \
+    check "PAUSER_ROLE holder == pauser Safe ($PAUSER)" "$PAUSER" \
       "$(cast call $TEL_V3 'getRoleMember(bytes32,uint256)(address)' $PAUSER_ROLE 0 --rpc-url $rpc 2>/dev/null)"
-    check "UNPAUSER_ROLE holder == unpauser Safe" "$UNPAUSER" \
+    check "UNPAUSER_ROLE holder == unpauser Safe ($UNPAUSER)" "$UNPAUSER" \
       "$(cast call $TEL_V3 'getRoleMember(bytes32,uint256)(address)' $UNPAUSER_ROLE 0 --rpc-url $rpc 2>/dev/null)"
     check "MINTER_ROLE holder count == 0 (bridges not live on mainnet)" "0" \
       "$(cast call $TEL_V3 'getRoleMemberCount(bytes32)(uint256)' $MINTER_ROLE --rpc-url $rpc 2>/dev/null)"
@@ -127,57 +158,59 @@ run_testnet() {
   for pair in "eth-sepolia|$ETH_SEPOLIA_RPC_URL|$TEL_LEGACY_ETH_SEPOLIA" "base-sepolia|$BASE_SEPOLIA_RPC_URL|$TEL_LEGACY_BASE_SEPOLIA"; do
     chain=$(echo "$pair" | cut -d'|' -f1); rpc=$(echo "$pair" | cut -d'|' -f2); tel_legacy=$(echo "$pair" | cut -d'|' -f3)
 
-    section "TESTNET / $chain / TelcoinV3 roles"
+    section "TESTNET / $chain / TelcoinV3 roles ($TEL_V3)"
     check "MINTER_ROLE holder count == 3" "3" \
       "$(cast call $TEL_V3 'getRoleMemberCount(bytes32)(uint256)' $MINTER_ROLE --rpc-url $rpc 2>/dev/null)"
     for i in 0 1 2; do
       holder=$(cast call $TEL_V3 'getRoleMember(bytes32,uint256)(address)' $MINTER_ROLE $i --rpc-url $rpc 2>/dev/null)
-      case "$(echo "$holder" | tr '[:upper:]' '[:lower:]')" in
-        "$(echo "$MINT_BURN_WRAPPER" | tr '[:upper:]' '[:lower:]')"|"$(echo "$TOKEN_MIGRATION" | tr '[:upper:]' '[:lower:]')"|"$(echo "$TEL_V3_FAUCET" | tr '[:upper:]' '[:lower:]')")
-          ok "MINTER_ROLE member[$i] is one of {MintBurnWrapper, TokenMigration, TelcoinV3Faucet}" ;;
-        *) bad "MINTER_ROLE member[$i] is a known contract" "MintBurnWrapper|TokenMigration|TelcoinV3Faucet" "$holder" ;;
-      esac
+      hname=$(name_for "$holder")
+      if [ "$hname" != "unrecognized address" ]; then
+        ok "MINTER_ROLE member[$i] is a known contract" "$holder ($hname)"
+      else
+        bad "MINTER_ROLE member[$i] is one of {MintBurnWrapper, TokenMigration, TelcoinV3Faucet}" \
+          "$MINT_BURN_WRAPPER | $TOKEN_MIGRATION | $TEL_V3_FAUCET" "$holder"
+      fi
     done
     check "BURNER_ROLE holder count == 1" "1" \
       "$(cast call $TEL_V3 'getRoleMemberCount(bytes32)(uint256)' $BURNER_ROLE --rpc-url $rpc 2>/dev/null)"
-    check "BURNER_ROLE holder == MintBurnWrapper" "$MINT_BURN_WRAPPER" \
+    check "BURNER_ROLE holder == MintBurnWrapper ($MINT_BURN_WRAPPER)" "$MINT_BURN_WRAPPER" \
       "$(cast call $TEL_V3 'getRoleMember(bytes32,uint256)(address)' $BURNER_ROLE 0 --rpc-url $rpc 2>/dev/null)"
 
-    section "TESTNET / $chain / MintBurnWrapper"
-    check "owner == governance Safe" "$ADMIN" \
+    section "TESTNET / $chain / MintBurnWrapper ($MINT_BURN_WRAPPER)"
+    check "owner == governance Safe ($ADMIN)" "$ADMIN" \
       "$(cast call $MINT_BURN_WRAPPER 'owner()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "token == TelcoinV3" "$TEL_V3" \
+    check "token == TelcoinV3 ($TEL_V3)" "$TEL_V3" \
       "$(cast call $MINT_BURN_WRAPPER 'token()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "bridge == TelcoinBridge" "$TELCOIN_BRIDGE" \
+    check "bridge == TelcoinBridge ($TELCOIN_BRIDGE)" "$TELCOIN_BRIDGE" \
       "$(cast call $MINT_BURN_WRAPPER 'bridge()(address)' --rpc-url $rpc 2>/dev/null)"
 
-    section "TESTNET / $chain / TelcoinBridge"
-    check "owner == governance Safe" "$ADMIN" \
+    section "TESTNET / $chain / TelcoinBridge ($TELCOIN_BRIDGE)"
+    check "owner == governance Safe ($ADMIN)" "$ADMIN" \
       "$(cast call $TELCOIN_BRIDGE 'owner()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "token == TelcoinV3" "$TEL_V3" \
+    check "token == TelcoinV3 ($TEL_V3)" "$TEL_V3" \
       "$(cast call $TELCOIN_BRIDGE 'token()(address)' --rpc-url $rpc 2>/dev/null)"
     check "paused == false" "false" \
       "$(cast call $TELCOIN_BRIDGE 'paused()(bool)' --rpc-url $rpc 2>/dev/null)"
     check "PAUSER_ROLE count == 1" "1" \
       "$(cast call $TELCOIN_BRIDGE 'getRoleMemberCount(bytes32)(uint256)' $PAUSER_ROLE --rpc-url $rpc 2>/dev/null)"
 
-    section "TESTNET / $chain / MigrationVault (UUPS proxy)"
+    section "TESTNET / $chain / MigrationVault (UUPS proxy, $MIGRATION_VAULT)"
     impl_raw=$(cast storage $MIGRATION_VAULT $EIP1967_IMPL_SLOT --rpc-url $rpc 2>/dev/null)
     impl_addr="0x${impl_raw: -40}"
-    check "implementation slot == expected impl" "$MIGRATION_VAULT_IMPL_EXPECTED" "$impl_addr"
-    check "OLD_TOKEN == this chain's TelcoinLegacy" "$tel_legacy" \
+    check "implementation slot == expected impl ($MIGRATION_VAULT_IMPL_EXPECTED)" "$MIGRATION_VAULT_IMPL_EXPECTED" "$impl_addr"
+    check "OLD_TOKEN == this chain's TelcoinLegacy ($tel_legacy)" "$tel_legacy" \
       "$(cast call $MIGRATION_VAULT 'OLD_TOKEN()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "NEW_TOKEN == TelcoinV3" "$TEL_V3" \
+    check "NEW_TOKEN == TelcoinV3 ($TEL_V3)" "$TEL_V3" \
       "$(cast call $MIGRATION_VAULT 'NEW_TOKEN()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "hasRole(DEFAULT_ADMIN_ROLE, Safe)" "true" "$(has_role $MIGRATION_VAULT DEFAULT_ADMIN_ROLE $DEFAULT_ADMIN_ROLE $ADMIN $rpc)"
-    check "hasRole(TREASURY_ROLE, Safe)" "true" "$(has_role $MIGRATION_VAULT TREASURY_ROLE $TREASURY_ROLE $ADMIN $rpc)"
+    check "hasRole(DEFAULT_ADMIN_ROLE, Safe $ADMIN)" "true" "$(has_role $MIGRATION_VAULT DEFAULT_ADMIN_ROLE $DEFAULT_ADMIN_ROLE $ADMIN $rpc)"
+    check "hasRole(TREASURY_ROLE, Safe $ADMIN)" "true" "$(has_role $MIGRATION_VAULT TREASURY_ROLE $TREASURY_ROLE $ADMIN $rpc)"
     check "paused == false" "false" \
       "$(cast call $MIGRATION_VAULT 'paused()(bool)' --rpc-url $rpc 2>/dev/null)"
 
-    section "TESTNET / $chain / TokenMigration"
-    check "oldToken == this chain's TelcoinLegacy" "$tel_legacy" \
+    section "TESTNET / $chain / TokenMigration ($TOKEN_MIGRATION)"
+    check "oldToken == this chain's TelcoinLegacy ($tel_legacy)" "$tel_legacy" \
       "$(cast call $TOKEN_MIGRATION 'oldToken()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "telcoinV3 == TelcoinV3" "$TEL_V3" \
+    check "telcoinV3 == TelcoinV3 ($TEL_V3)" "$TEL_V3" \
       "$(cast call $TOKEN_MIGRATION 'telcoinV3()(address)' --rpc-url $rpc 2>/dev/null)"
     check "migrationClosed == false" "false" \
       "$(cast call $TOKEN_MIGRATION 'migrationClosed()(bool)' --rpc-url $rpc 2>/dev/null)"
@@ -185,14 +218,14 @@ run_testnet() {
       "$(cast call $TOKEN_MIGRATION 'paused()(bool)' --rpc-url $rpc 2>/dev/null)"
 
     section "TESTNET / $chain / Faucets"
-    check "TelcoinV3Faucet.owner == governance Safe" "$ADMIN" \
+    check "TelcoinV3Faucet.owner == governance Safe ($ADMIN)" "$ADMIN" \
       "$(cast call $TEL_V3_FAUCET 'owner()(address)' --rpc-url $rpc 2>/dev/null)"
-    check "TelcoinV3Faucet.token == TelcoinV3" "$TEL_V3" \
+    check "TelcoinV3Faucet.token == TelcoinV3 ($TEL_V3)" "$TEL_V3" \
       "$(cast call $TEL_V3_FAUCET 'token()(address)' --rpc-url $rpc 2>/dev/null)"
     legacy_faucet_owner=$(cast call $LEGACY_FAUCET 'owner()(address)' --rpc-url $rpc 2>/dev/null)
     legacy_faucet_owner_lc=$(echo "$legacy_faucet_owner" | tr '[:upper:]' '[:lower:]')
     if [ "$legacy_faucet_owner_lc" = "$(echo "$ADMIN" | tr '[:upper:]' '[:lower:]')" ]; then
-      ok "LegacyTelcoinFaucet.owner == governance Safe (finding 3.1 fixed!)"
+      ok "LegacyTelcoinFaucet.owner == governance Safe (finding 3.1 fixed!)" "$legacy_faucet_owner"
     elif [ "$legacy_faucet_owner_lc" = "$(echo "$LEGACY_FAUCET_KNOWN_STALE_OWNER" | tr '[:upper:]' '[:lower:]')" ]; then
       warn "LegacyTelcoinFaucet.owner still the known stale Safe" "$legacy_faucet_owner"
     else
@@ -217,14 +250,14 @@ run_staking() {
   BATCH_MIGRATOR_ROLE=$(role_hash "BATCH_MIGRATOR_ROLE")
 
   section "STAKING / polygon / deployment check"
-  check "StakingModuleProxy has no code on Polygon (not deployed there yet)" "0" \
+  check "StakingModuleProxy ($STAKING_PROXY) has no code on Polygon (not deployed there yet)" "0" \
     "$(cast codesize $STAKING_PROXY --rpc-url $POLYGON_RPC_URL 2>/dev/null)"
 
-  section "STAKING / eth-sepolia / StakingModule (proxy)"
+  section "STAKING / eth-sepolia / StakingModule (proxy, $STAKING_PROXY)"
   impl_raw=$(cast storage $STAKING_PROXY $EIP1967_IMPL_SLOT --rpc-url $rpc 2>/dev/null)
   impl_addr="0x${impl_raw: -40}"
-  check "implementation slot == expected impl" "$STAKING_IMPL_EXPECTED" "$impl_addr"
-  check "tel() == TelcoinV3 (not legacy V2 token)" "$TEL_V3" \
+  check "implementation slot == expected impl ($STAKING_IMPL_EXPECTED)" "$STAKING_IMPL_EXPECTED" "$impl_addr"
+  check "tel() == TelcoinV3, not legacy V2 token ($TEL_V3)" "$TEL_V3" \
     "$(cast call $STAKING_PROXY 'tel()(address)' --rpc-url $rpc 2>/dev/null)"
   check "paused == false" "false" \
     "$(cast call $STAKING_PROXY 'paused()(bool)' --rpc-url $rpc 2>/dev/null)"
@@ -238,27 +271,27 @@ run_staking() {
            "PAUSER_ROLE|$PAUSER_ROLE|$PAUSER" \
            "UNPAUSER_ROLE|$UNPAUSER_ROLE|$UNPAUSER"; do
     name=$(echo "$r" | cut -d'|' -f1); hash=$(echo "$r" | cut -d'|' -f2); expected=$(echo "$r" | cut -d'|' -f3)
-    check "hasRole($name, expected holder)" "true" "$(has_role $STAKING_PROXY $name $hash $expected $rpc)"
+    check "hasRole($name, $expected)" "true" "$(has_role $STAKING_PROXY $name $hash $expected $rpc)"
   done
 
-  section "STAKING / eth-sepolia / StakingMigratorV2toV3"
-  check "hasRole(DEFAULT_ADMIN_ROLE, Safe)" "true" "$(has_role $STAKING_MIGRATOR DEFAULT_ADMIN_ROLE $DEFAULT_ADMIN_ROLE $ADMIN $rpc)"
-  check "hasRole(BATCH_MIGRATOR_ROLE, Safe)" "true" "$(has_role $STAKING_MIGRATOR BATCH_MIGRATOR_ROLE $BATCH_MIGRATOR_ROLE $ADMIN $rpc)"
-  check "v2Staking == StakingModuleV2 (legacy)" "$STAKING_V2" \
+  section "STAKING / eth-sepolia / StakingMigratorV2toV3 ($STAKING_MIGRATOR)"
+  check "hasRole(DEFAULT_ADMIN_ROLE, Safe $ADMIN)" "true" "$(has_role $STAKING_MIGRATOR DEFAULT_ADMIN_ROLE $DEFAULT_ADMIN_ROLE $ADMIN $rpc)"
+  check "hasRole(BATCH_MIGRATOR_ROLE, Safe $ADMIN)" "true" "$(has_role $STAKING_MIGRATOR BATCH_MIGRATOR_ROLE $BATCH_MIGRATOR_ROLE $ADMIN $rpc)"
+  check "v2Staking == StakingModuleV2 legacy ($STAKING_V2)" "$STAKING_V2" \
     "$(cast call $STAKING_MIGRATOR 'v2Staking()(address)' --rpc-url $rpc 2>/dev/null)"
-  check "v3Staking == StakingModuleProxy" "$STAKING_PROXY" \
+  check "v3Staking == StakingModuleProxy ($STAKING_PROXY)" "$STAKING_PROXY" \
     "$(cast call $STAKING_MIGRATOR 'v3Staking()(address)' --rpc-url $rpc 2>/dev/null)"
-  check "tokenMigration == TokenMigration" "$TOKEN_MIGRATION" \
+  check "tokenMigration == TokenMigration ($TOKEN_MIGRATION)" "$TOKEN_MIGRATION" \
     "$(cast call $STAKING_MIGRATOR 'tokenMigration()(address)' --rpc-url $rpc 2>/dev/null)"
-  check "migrator holds MIGRATOR_ROLE on legacy StakingModuleV2 (manual step)" "true" \
+  check "migrator ($STAKING_MIGRATOR) holds MIGRATOR_ROLE on legacy StakingModuleV2 (manual step)" "true" \
     "$(has_role $STAKING_V2 MIGRATOR_ROLE $MIGRATOR_ROLE $STAKING_MIGRATOR $rpc)"
   check "paused == false" "false" \
     "$(cast call $STAKING_MIGRATOR 'paused()(bool)' --rpc-url $rpc 2>/dev/null)"
 
-  section "STAKING / eth-sepolia / SimplePlugin_TEL"
-  check "owner == governance Safe" "$ADMIN" \
+  section "STAKING / eth-sepolia / SimplePlugin_TEL ($SIMPLE_PLUGIN)"
+  check "owner == governance Safe ($ADMIN)" "$ADMIN" \
     "$(cast call $SIMPLE_PLUGIN 'owner()(address)' --rpc-url $rpc 2>/dev/null)"
-  check "rewardToken == TelcoinV3" "$TEL_V3" \
+  check "rewardToken == TelcoinV3 ($TEL_V3)" "$TEL_V3" \
     "$(cast call $SIMPLE_PLUGIN 'rewardToken()(address)' --rpc-url $rpc 2>/dev/null)"
 }
 
