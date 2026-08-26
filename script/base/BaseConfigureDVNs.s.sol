@@ -217,7 +217,11 @@ abstract contract BaseConfigureDVNs is DeployBase {
             needsLibUpdate = isDefault || currentRecvLib != dst.receiveLib;
         }
 
-        bytes memory ulnConfig = _buildUlnConfig(dst);
+        // Receive ULN = dst chain's DVN deployments, but the SOURCE chain's
+        // confirmations: `confirmations` counts source-chain blocks the DVNs
+        // must wait, so it must mirror the send config on src or the pathway
+        // stalls (DVN attests at src.confirmations, receive demands more).
+        bytes memory ulnConfig = _buildUlnConfig(dst, src.confirmations);
 
         {
             bytes memory currentUln = endpoint.getConfig(dstBridge, dst.receiveLib, src.eid, CONFIG_TYPE_ULN);
@@ -342,8 +346,12 @@ abstract contract BaseConfigureDVNs is DeployBase {
     // ----------------
 
     function _buildUlnConfig(ChainConfig memory chain) internal pure returns (bytes memory) {
+        return _buildUlnConfig(chain, chain.confirmations);
+    }
+
+    function _buildUlnConfig(ChainConfig memory chain, uint64 confirmations) internal pure returns (bytes memory) {
         UlnConfig memory config = UlnConfig({
-            confirmations: chain.confirmations,
+            confirmations: confirmations,
             requiredDVNCount: uint8(chain.requiredDVNs.length),
             optionalDVNCount: uint8(chain.optionalDVNs.length),
             optionalDVNThreshold: chain.optionalDVNThreshold,

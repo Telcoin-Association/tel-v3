@@ -47,13 +47,13 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             ETH_MAINNET_LZ_ENDPOINT_V2,
             _ethRequiredDVNs(),
             _ethOptionalDVNs(),
-            0, // TODO: Set optional DVN threshold
+            1, // 1-of-2 optional DVNs must sign (Nethermind, FCAT)
             ETH_MAINNET_LZ_SEND_ULN_302,
             ETH_MAINNET_LZ_RECEIVE_ULN_302,
             ETH_MAINNET_LZ_EXECUTOR,
             false,
-            15, // TODO: Finalize mainnet confirmations
-            100_000 // TODO: Profile actual lzReceive gas
+            15, // matches LZ default for messages sent FROM Ethereum
+            100_000 // lzReceive gas on this chain; validated on testnet
         ));
 
         // Base Mainnet
@@ -65,13 +65,13 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             BASE_MAINNET_LZ_ENDPOINT_V2,
             _baseRequiredDVNs(),
             _baseOptionalDVNs(),
-            0, // TODO: Set optional DVN threshold
+            1, // 1-of-2 optional DVNs must sign (Nethermind, FCAT)
             BASE_MAINNET_LZ_SEND_ULN_302,
             BASE_MAINNET_LZ_RECEIVE_ULN_302,
             BASE_MAINNET_LZ_EXECUTOR,
             false,
-            15, // TODO: Finalize mainnet confirmations
-            100_000 // TODO: Profile actual lzReceive gas
+            10, // matches LZ default for messages sent FROM Base
+            100_000 // lzReceive gas on this chain; validated on testnet
         ));
 
         // Polygon Mainnet
@@ -83,13 +83,13 @@ contract ConfigureDVNs is BaseConfigureDVNs {
             POLYGON_MAINNET_LZ_ENDPOINT_V2,
             _polygonRequiredDVNs(),
             _polygonOptionalDVNs(),
-            0, // TODO: Set optional DVN threshold
+            1, // 1-of-2 optional DVNs must sign (Nethermind, FCAT)
             POLYGON_MAINNET_LZ_SEND_ULN_302,
             POLYGON_MAINNET_LZ_RECEIVE_ULN_302,
             POLYGON_MAINNET_LZ_EXECUTOR,
             false,
-            15, // TODO: Finalize mainnet confirmations
-            100_000 // TODO: Profile actual lzReceive gas
+            120, // matches LZ default for messages sent FROM Polygon (PoS reorg depth)
+            100_000 // lzReceive gas on this chain; validated on testnet
         ));
 
         // TelcoinNetwork (main chain — NativeBridge)
@@ -113,31 +113,51 @@ contract ConfigureDVNs is BaseConfigureDVNs {
     // DVN Arrays (per chain)
     // ----------------------
 
+    // Mesh (decided 2026-08-26, see docs/custom-dvn-mesh.md):
+    //   Required: LayerZero Labs, Canary, Deutsche Telekom (all must sign)
+    //   Optional: Nethermind, FCAT (1-of-2 must sign) — 4 of 5 total must agree
+    // Addresses live in utils/Constants.sol (verified vs LZ metadata API).
+    // ULN302 requires each array sorted ascending by address with no
+    // duplicates (reverts LZ_ULN_Unsorted otherwise), so provider order
+    // differs per chain below.
+
     function _ethRequiredDVNs() internal pure returns (address[] memory dvns) {
-        dvns = new address[](1);
-        dvns[0] = address(0); // TODO: e.g. LayerZero Labs DVN on Ethereum
+        dvns = new address[](3);
+        dvns[0] = ETH_MAINNET_DVN_DEUTSCHE_TELEKOM;
+        dvns[1] = ETH_MAINNET_DVN_LAYERZERO_LABS;
+        dvns[2] = ETH_MAINNET_DVN_CANARY;
     }
 
-    function _ethOptionalDVNs() internal pure returns (address[] memory) {
-        return new address[](0); // TODO: e.g. [Google Cloud, Polyhedra, Nethermind]
+    function _ethOptionalDVNs() internal pure returns (address[] memory dvns) {
+        dvns = new address[](2);
+        dvns[0] = ETH_MAINNET_DVN_NETHERMIND;
+        dvns[1] = ETH_MAINNET_DVN_FCAT;
     }
 
     function _baseRequiredDVNs() internal pure returns (address[] memory dvns) {
-        dvns = new address[](1);
-        dvns[0] = address(0); // TODO: e.g. LayerZero Labs DVN on Base
+        dvns = new address[](3);
+        dvns[0] = BASE_MAINNET_DVN_CANARY;
+        dvns[1] = BASE_MAINNET_DVN_LAYERZERO_LABS;
+        dvns[2] = BASE_MAINNET_DVN_DEUTSCHE_TELEKOM;
     }
 
-    function _baseOptionalDVNs() internal pure returns (address[] memory) {
-        return new address[](0); // TODO
+    function _baseOptionalDVNs() internal pure returns (address[] memory dvns) {
+        dvns = new address[](2);
+        dvns[0] = BASE_MAINNET_DVN_NETHERMIND;
+        dvns[1] = BASE_MAINNET_DVN_FCAT;
     }
 
     function _polygonRequiredDVNs() internal pure returns (address[] memory dvns) {
-        dvns = new address[](1);
-        dvns[0] = address(0); // TODO: e.g. LayerZero Labs DVN on Polygon
+        dvns = new address[](3);
+        dvns[0] = POLYGON_MAINNET_DVN_CANARY;
+        dvns[1] = POLYGON_MAINNET_DVN_LAYERZERO_LABS;
+        dvns[2] = POLYGON_MAINNET_DVN_DEUTSCHE_TELEKOM;
     }
 
-    function _polygonOptionalDVNs() internal pure returns (address[] memory) {
-        return new address[](0); // TODO
+    function _polygonOptionalDVNs() internal pure returns (address[] memory dvns) {
+        dvns = new address[](2);
+        dvns[0] = POLYGON_MAINNET_DVN_FCAT;
+        dvns[1] = POLYGON_MAINNET_DVN_NETHERMIND;
     }
 
     // -------
