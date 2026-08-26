@@ -5,7 +5,13 @@ pragma solidity ^0.8.30;
 // Legacy TEL
 // ----------
 
+// All three are 2-decimal tokens (verified on-chain 2026-08-26) — required by
+// TokenMigration's hardcoded 2→18 DECIMAL_MULTIPLIER. Ethereum is canonical;
+// Polygon is the PoS-bridged representation; Base is the official deployment
+// announced by the Telcoin Association (2025-02-25).
 address constant LEGACY_TELCOIN_ETHEREUM = 0x467Bccd9d29f223BcE8043b84E8C8B282827790F;
+address constant LEGACY_TELCOIN_POLYGON = 0xdF7837DE1F2Fa4631D716CF2502f8b230F1dcc32;
+address constant LEGACY_TELCOIN_BASE = 0x09bE1692ca16e06f536F0038fF11D1dA8524aDB1;
 
 // -------------
 // EVM Chain IDs

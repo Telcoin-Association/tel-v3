@@ -45,7 +45,7 @@ contract DeployMigrationInfra is BaseDeployMigrationInfra {
         _migrationDuration = 365 days;
         _withdrawalDelay = 90 days;
 
-        // Only chains with legacy TEL tokens
+        // Only chains with legacy TEL tokens — same set as the bridge mesh
         allChains.push(MigrationChainConfig({
             chainName: "ethereum",
             rpcUrl: vm.envString("ETHEREUM_RPC_URL"),
@@ -54,6 +54,20 @@ contract DeployMigrationInfra is BaseDeployMigrationInfra {
             deployLegacyTel: false
         }));
 
-        // Add more chains here as needed (e.g. Polygon if legacy TEL exists there)
+        allChains.push(MigrationChainConfig({
+            chainName: "base",
+            rpcUrl: vm.envString("BASE_RPC_URL"),
+            evmChainId: BASE_MAINNET_CHAIN_ID,
+            legacyTel: LEGACY_TELCOIN_BASE,
+            deployLegacyTel: false
+        }));
+
+        allChains.push(MigrationChainConfig({
+            chainName: "polygon",
+            rpcUrl: vm.envString("POLYGON_RPC_URL"),
+            evmChainId: POLYGON_MAINNET_CHAIN_ID,
+            legacyTel: LEGACY_TELCOIN_POLYGON,
+            deployLegacyTel: false
+        }));
     }
 }

@@ -119,9 +119,25 @@ abstract contract BaseDeployMigrationInfra is DeployBase, Roles {
             "Deploy TokenMigration"
         );
 
-        // 2b. Grant PAUSER_ROLE/UNPAUSER_ROLE on TokenMigration (batched, post-deploy)
+        // 2b. Pause roles + deploy paused (batched, post-deploy). Fresh deploys are paused
+        //     within the same MultiSend so migration cannot start until UNPAUSER unpauses at
+        //     launch. pause() is PAUSER_ROLE-gated and the batch executes as the admin, so
+        //     the order is: grant PAUSER_ROLE to the admin, pause, then grant the dedicated
+        //     pauser/unpauser. The admin keeps PAUSER_ROLE.
         require(_pauser != address(0), "Pauser not configured");
         require(_unpauser != address(0), "Unpauser not configured");
+        console.log("  [batch] Grant PAUSER_ROLE to admin");
+        _batchTargets.push(migrator);
+        _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (PAUSER_ROLE, _admin)));
+
+        // Fresh deploys only: an existing migrator's pause state is operational state, not
+        // deployment state (and pause() reverts if already paused).
+        if (migrator.code.length == 0) {
+            console.log("  [batch] Pause TokenMigration (deploy paused)");
+            _batchTargets.push(migrator);
+            _batchDatas.push(abi.encodeCall(TokenMigration.pause, ()));
+        }
+
         console.log("  [batch] Grant PAUSER_ROLE / UNPAUSER_ROLE on TokenMigration");
         _batchTargets.push(migrator);
         _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (PAUSER_ROLE, _pauser)));
