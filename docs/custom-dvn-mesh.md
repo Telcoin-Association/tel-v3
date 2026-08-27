@@ -361,12 +361,14 @@ Threshold: 3 Required + 1-of-2 Optional
 
 ## DVN Contract Addresses
 
-All providers confirmed deployed on Ethereum, Base, and Polygon (queried from [LZ metadata API](https://metadata.layerzero-api.com/v1/metadata/dvns) on 2026-05-30):
+All providers confirmed deployed on Ethereum, Base, and Polygon (re-verified against the [LZ metadata API](https://metadata.layerzero-api.com/v1/metadata/dvns) on 2026-08-26).
+
+> **Correction (2026-08-26):** the original 2026-05-30 table listed the `lzReadCompatible` DVN variants for LayerZero Labs (Ethereum, Polygon) and Nethermind (Base, Polygon). Those are separate lzRead deployments — standard OFT messaging must use the addresses below. Canonical copy lives in `script/mainnet/utils/Constants.sol`.
 
 | Provider | Ethereum | Base | Polygon |
 |----------|----------|------|---------|
-| LayerZero Labs | `0xDb979D0A36aF0525AFa60Fc265B1525505c55D79` | `0x9e059a54699a285714207b43B055483E78FAac25` | `0xA70C51C38D5A9990F3113a403D74EBa01fce4CCb` |
-| Nethermind | `0xa59BA433ac34D2927232918Ef5B2eaAfcF130BA5` | `0x658947BC7956aea0067a62Cf87ab02ae199Ef3f3` | `0xbCefdAdB8d24b1d36c26B522235012Cd4cf162f6` |
+| LayerZero Labs | `0x589dEDbD617e0CBcB916A9223F4d1300c294236b` | `0x9e059a54699a285714207b43B055483E78FAac25` | `0x23DE2FE932d9043291f870324B74F820e11dc81A` |
+| Nethermind | `0xa59BA433ac34D2927232918Ef5B2eaAfcF130BA5` | `0xcd37CA043f8479064e10635020c65FfC005d36f6` | `0x31F748a368a893Bdb5aBB67ec95F232507601A73` |
 | Canary | `0xa4fE5A5B9A846458a70Cd0748228aED3bF65c2cd` | `0x554833698Ae0FB22ECC90B01222903fD62CA4B47` | `0x13feb7234Ff60A97af04477d6421415766753Ba3` |
 | Deutsche Telekom | `0x373a6E5c0C4E89E24819f00AA37ea370917AAfF4` | `0xc2A0C36f5939A14966705c7Cec813163FaEEa1F0` | `0x5CcCb8DE6Cdba9D2Af9d84465653af7390FDf9Dd` |
 | FCAT | `0xc61aF5706b80Ca941a0aAb1C7B3D7a953E4dD8C4` | `0xEaE72C81F3FCe1313EeeE26717F42af91E178516` | `0x14206011d192E4F41D694d21ac599D0e88c2c12A` |
@@ -381,6 +383,8 @@ All providers confirmed deployed on Ethereum, Base, and Polygon (queried from [L
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-05-30 | Initial provider shortlist confirmed | Based on LayerZero team call — prioritizing client, cloud, and entity diversity |
+| 2026-08-26 | **Mesh chosen**: Required = [LayerZero Labs, Canary, Deutsche Telekom], Optional = [Nethermind, FCAT], threshold 1-of-2 (4 of 5 must agree) | Wired into `script/mainnet/2_ConfigureDVNs.s.sol`; addresses in `script/mainnet/utils/Constants.sol` |
+| 2026-08-26 | Address table corrected — standard messaging DVNs, not lzRead variants | Original table mixed in `lzReadCompatible` deployments for LZ Labs (eth/polygon) and Nethermind (base/polygon) |
 | | | |
 
 ### Open Questions
@@ -391,7 +395,7 @@ All providers confirmed deployed on Ethereum, Base, and Polygon (queried from [L
 4. **TelcoinNetwork DVN support** — Which providers will support TelcoinNetwork when it launches? This could narrow our options.
 5. ~~**Exact fee quotes**~~ — ✅ Queried via `getFee()` on 2026-05-30. DVN fees are ~$0.003/DVN/msg from Ethereum. Cost is negligible.
 6. **Liveness SLAs** — Do any providers offer uptime guarantees or SLAs?
-7. **Preferred mesh option** — Need team alignment on which option (A–E). Given negligible cost delta, security should be the primary driver.
+7. ~~**Preferred mesh option**~~ — ✅ Decided 2026-08-26: 3 required (LZ Labs, Canary, Deutsche Telekom) + 1-of-2 optional (Nethermind, FCAT). See Decision Log.
 
 ---
 
