@@ -18,14 +18,12 @@ import {Roles} from "../../src/helpers/Roles.sol";
 
 /// @title BaseDeployBridges
 /// @notice Deploys bridge infrastructure and configures peers across all chains.
-///         Each chain gets TWO MultiSend proposals at consecutive nonces: the initcode-heavy
-///         deploy calls alone exceed hardware-wallet signing memory when combined with the
-///         config calls, so deploys and configuration are split.
+///         All deploys, role grants, and peer config for a single chain are batched into one MultiSend.
 /// @dev    Step 1 in the deployment pipeline. Requires TelcoinV3 already deployed (loaded from JSON).
 ///
-///         Per chain:
-///         - Proposal 1 (deploys): NativeBridge on mainChain; MintBurnWrapper + TelcoinBridge on satellites
-///         - Proposal 2 (config): pause-role grants, MINTER/BURNER grants, bridge authorization, peers
+///         Per chain (single MultiSend):
+///         - mainChain: Deploy NativeBridge + configure peers
+///         - satellite: Deploy MintBurnWrapper + TelcoinBridge, grant MINTER/BURNER, authorize bridge, configure peers
 abstract contract BaseDeployBridges is DeployBase, Roles {
     using Safe for *;
 
@@ -53,7 +51,6 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
     struct RuntimeData {
         uint256 forkId;
         address bridgeAddress;
-        bool deployProposed;
         address[] batchTargets;
         bytes[] batchDatas;
     }
@@ -69,13 +66,12 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
     // Script
     // ------
 
-    /// @dev Iterates all chains: proposes the deploy batch and stashes the config batch per
-    ///      chain in the first pass, then adds peers and proposes the config batch in the second.
+    /// @dev Iterates all chains: deploys bridges + configures peers, all batched per chain.
     function run() public {
         uint256 len = allChains.length;
 
-        // First pass: propose each chain's deploy-only batch, then stash the accumulated
-        // config txns — the shared batch arrays must not leak across chains.
+        // First pass: deploy bridges and collect addresses. Each chain's batched txns are
+        // stashed per chain — the shared batch arrays must not leak across chains.
         for (uint256 i; i < len; ++i) {
             uint256 forkId = vm.createSelectFork(allChains[i].rpcUrl);
             // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
@@ -84,29 +80,29 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
 
             console.log("=== Deploy Bridges on %s ===", allChains[i].chainName);
 
+            address bridgeAddress = _collectDeploys(allChains[i]);
+
             RuntimeData storage runtimeData = getRuntimeData[allChains[i].rpcUrl];
             runtimeData.forkId = forkId;
-            runtimeData.bridgeAddress = _collectDeploys(allChains[i], runtimeData);
+            runtimeData.bridgeAddress = bridgeAddress;
             runtimeData.batchTargets = _batchTargets;
             runtimeData.batchDatas = _batchDatas;
             delete _batchTargets;
             delete _batchDatas;
         }
 
-        // Second pass: restore the chain's config batch, add peer config, and propose it
-        // queued directly behind that chain's deploy proposal (if one was made).
+        // Second pass: restore the chain's own batch, add peer config, and flush per chain
         for (uint256 i; i < len; ++i) {
             RuntimeData storage runtimeData = getRuntimeData[allChains[i].rpcUrl];
             vm.selectFork(runtimeData.forkId);
-            currentNonce = safe.getNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0))
-                + (runtimeData.deployProposed ? 1 : 0);
+            currentNonce = safe.getNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
 
             _batchTargets = runtimeData.batchTargets;
             _batchDatas = runtimeData.batchDatas;
 
             _collectPeers(i, len);
 
-            _flushBatch(string.concat("Configure bridges on ", allChains[i].chainName));
+            _flushBatch(string.concat("Deploy + configure bridges on ", allChains[i].chainName));
         }
     }
 
@@ -114,16 +110,10 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
     // Deploy
     // ------
 
-    /// @dev Loads TelcoinV3 from JSON. Batches the CREATE3 deploys (NativeBridge on mainChain;
-    ///      MintBurnWrapper + TelcoinBridge on satellites) and flushes them as their own
-    ///      proposal — the initcode payloads must not share a MultiSend with the config calls
-    ///      or the combined payload exceeds hardware-wallet signing memory. The config txns
-    ///      (role grants, bridge authorization) are left accumulated in the batch arrays;
-    ///      the caller stashes them and flushes after peers are added.
-    function _collectDeploys(BridgeChainConfig memory chain, RuntimeData storage runtimeData)
-        internal
-        returns (address bridge)
-    {
+    /// @dev Loads TelcoinV3 from JSON. For mainChain batches NativeBridge deploy; for satellites batches
+    ///      MintBurnWrapper + TelcoinBridge deploys, MINTER/BURNER grants, and bridge authorization.
+    ///      Does NOT flush — caller is responsible for flushing after peers are added.
+    function _collectDeploys(BridgeChainConfig memory chain) internal returns (address bridge) {
         require(
             block.chainid == chain.evmChainId,
             string.concat(
@@ -143,8 +133,6 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 bytes.concat(type(NativeBridge).creationCode, abi.encode(chain.lzEndpoint, _admin)),
                 "Deploy NativeBridge"
             );
-
-            runtimeData.deployProposed = _flushBatch(string.concat("Deploy bridges on ", chain.chainName));
 
             _collectPauseRoleGrants(bridge);
 
@@ -166,8 +154,6 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
                 ),
                 "Deploy TelcoinBridge"
             );
-
-            runtimeData.deployProposed = _flushBatch(string.concat("Deploy bridges on ", chain.chainName));
 
             _collectPauseRoleGrants(bridge);
 
@@ -261,13 +247,11 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
         return expectedAddress;
     }
 
-    /// @dev Flushes accumulated batch txns as one MultiSend proposal. Returns true if a
-    ///      proposal was made (callers use this to queue follow-up proposals at nonce + 1).
-    function _flushBatch(string memory description) internal returns (bool) {
+    function _flushBatch(string memory description) internal {
         uint256 len = _batchTargets.length;
         if (len == 0) {
             console.log("  No changes needed, skipping");
-            return false;
+            return;
         }
 
         address[] memory targets = new address[](len);
@@ -282,6 +266,5 @@ abstract contract BaseDeployBridges is DeployBase, Roles {
 
         delete _batchTargets;
         delete _batchDatas;
-        return true;
     }
 }
