@@ -15,13 +15,12 @@ import "../utils/Constants.sol";
 ///
 ///         Executes as a SINGLE MultiSend Safe transaction so the migration window is
 ///         never open to the public, even transiently:
-///         1. Grant UNPAUSER_ROLE to the admin Safe (only if paused and not already held)
+///         1. Grant PAUSER_ROLE / UNPAUSER_ROLE to the admin Safe (only if paused and
+///            not already held — the admin Safe keeps both roles afterward)
 ///         2. unpause()                             (only if currently paused)
 ///         3. approve legacy TEL to TokenMigration  (full Safe balance)
 ///         4. migrate()                             (migrates the Safe's entire legacy balance)
 ///         5. pause()                               (only if it was originally paused)
-///         6. Revoke UNPAUSER_ROLE from the admin Safe (only if granted in step 1, so the
-///            role stays exclusively with the dedicated unpauser)
 ///
 ///         Run with DEPLOYER_SAFE_ADDRESS set to the admin Safe (holds DEFAULT_ADMIN_ROLE
 ///         and PAUSER_ROLE on TokenMigration).
@@ -77,9 +76,7 @@ contract QuickMigrate is DeployBase, Roles {
 
         bool wasPaused = migration.paused();
         bool grantUnpauser = wasPaused && !access.hasRole(UNPAUSER_ROLE, deployerSafeAddress);
-        if (wasPaused) {
-            require(access.hasRole(PAUSER_ROLE, deployerSafeAddress), "Safe lacks PAUSER_ROLE to re-pause");
-        }
+        bool grantPauser = wasPaused && !access.hasRole(PAUSER_ROLE, deployerSafeAddress);
 
         console.log("=== QuickMigrate (Safe) ===");
         console.log("Chain:", chainAlias);
@@ -91,10 +88,14 @@ contract QuickMigrate is DeployBase, Roles {
         console.log("Currently paused:", wasPaused);
         console.log("");
 
-        // 1. Temporarily grant UNPAUSER_ROLE to the admin Safe if needed
+        // 1. Grant pause roles to the admin Safe if needed (kept afterward)
         if (grantUnpauser) {
             _batchTargets.push(migrator);
             _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (UNPAUSER_ROLE, deployerSafeAddress)));
+        }
+        if (grantPauser) {
+            _batchTargets.push(migrator);
+            _batchDatas.push(abi.encodeCall(IAccessControl.grantRole, (PAUSER_ROLE, deployerSafeAddress)));
         }
 
         // 2. Unpause for the duration of this batch only
@@ -117,22 +118,13 @@ contract QuickMigrate is DeployBase, Roles {
             _batchDatas.push(abi.encodeCall(TokenMigration.pause, ()));
         }
 
-        // 6. Restore original role state
-        if (grantUnpauser) {
-            _batchTargets.push(migrator);
-            _batchDatas.push(abi.encodeCall(IAccessControl.revokeRole, (UNPAUSER_ROLE, deployerSafeAddress)));
-        }
-
         _proposeTransactions(_batchTargets, _batchDatas, "Quick migrate legacy TEL to TelcoinV3");
 
         // Simulation executes the batch on the fork — verify the end state
         if (isSimulation()) {
             require(migration.paused() == wasPaused, "Pause state not restored");
-            if (grantUnpauser) {
-                require(!access.hasRole(UNPAUSER_ROLE, deployerSafeAddress), "UNPAUSER_ROLE not revoked");
-            }
             require(IERC20(legacyTelcoin).balanceOf(deployerSafeAddress) == 0, "Legacy TEL not fully migrated");
-            console.log("Simulation OK: migrated, pause + role state restored.");
+            console.log("Simulation OK: migrated, pause state restored.");
             console.log("Safe TEL v3 balance:", IERC20(telcoinV3).balanceOf(deployerSafeAddress));
         } else {
             console.log("Quick migrate batch proposed.");
