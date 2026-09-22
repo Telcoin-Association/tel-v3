@@ -56,6 +56,10 @@ contract QuickMigrate is DeployBase, Roles {
     }
 
     function run() public {
+        // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
+        // Safe txns (on-chain nonce doesn't advance until execution).
+        currentNonce = getSafeNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
+
         (string memory chainAlias, address legacyTelcoin) = _chainConfig();
 
         address migrator = _loadDeploymentAddress(chainAlias, "TokenMigration");
