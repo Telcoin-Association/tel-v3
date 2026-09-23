@@ -16,37 +16,47 @@ interface IOwnable {
 ///         TEL v3 contracts, so Blockaid can pause the protocol in an emergency:
 ///         TelcoinV3, TelcoinBridge, TokenMigration, MigrationVault.
 ///
-///         All grants are batched into ONE MultiSend Safe transaction, proposed by the
-///         admin Safe (DEPLOYER_SAFE_ADDRESS). Note the grant is DEFAULT_ADMIN_ROLE-gated
-///         on TelcoinV3 / TokenMigration / MigrationVault but onlyOwner-gated on
-///         TelcoinBridge — the admin Safe satisfies both. Idempotent: contracts where
-///         Blockaid already holds PAUSER_ROLE are skipped.
+///         Runs against ALL mainnet chains (Ethereum, Base, Polygon) in one execution,
+///         forking each in turn. Per chain, all grants are batched into ONE MultiSend
+///         Safe transaction, proposed by the admin Safe (DEPLOYER_SAFE_ADDRESS). Note
+///         the grant is DEFAULT_ADMIN_ROLE-gated on TelcoinV3 / TokenMigration /
+///         MigrationVault but onlyOwner-gated on TelcoinBridge — the admin Safe
+///         satisfies both. Idempotent: contracts where Blockaid already holds
+///         PAUSER_ROLE are skipped.
 ///
 /// ## How to Run
 ///
 /// Simulation:
 /// ```
-/// forge script script/mainnet/write/GrantBlockaidPauser.s.sol --rpc-url $RPC_URL --ffi -vvvv
+/// forge script script/mainnet/write/GrantBlockaidPauser.s.sol --rpc-url $ETHEREUM_RPC_URL --ffi -vvvv
 /// ```
 ///
-/// Broadcast (proposes to Safe TX Service):
+/// Broadcast (proposes to Safe TX Service on each chain):
 /// ```
-/// forge script script/mainnet/write/GrantBlockaidPauser.s.sol --rpc-url $RPC_URL --broadcast --ffi -vvvv
+/// forge script script/mainnet/write/GrantBlockaidPauser.s.sol --rpc-url $ETHEREUM_RPC_URL --broadcast --ffi -vvvv
 /// ```
 ///
 /// ## Queueing behind pending Safe txns
 ///
 /// Proposal nonces derive from the on-chain Safe nonce, which only advances on
 /// execution. If an earlier txn is proposed but not yet executed, set SAFE_NONCE_OFFSET
-/// to the number of pending (unexecuted) proposals so this one queues behind them:
+/// to the number of pending (unexecuted) proposals so this one queues behind them
+/// (applies to every chain in the run):
 /// ```
-/// SAFE_NONCE_OFFSET=1 forge script <this script> --rpc-url $RPC_URL --broadcast --ffi -vvvv
+/// SAFE_NONCE_OFFSET=1 forge script <this script> --rpc-url $ETHEREUM_RPC_URL --broadcast --ffi -vvvv
 /// ```
 contract GrantBlockaidPauser is DeployBase, Roles {
     bytes32 internal constant DEFAULT_ADMIN_ROLE = 0x00;
 
+    struct ChainConfig {
+        string chainName;
+        string rpcUrl;
+    }
+
     /// @notice Blockaid incident-response wallet, read from .env.
     address internal blockaidResponseWallet;
+
+    ChainConfig[] internal allChains;
 
     address[] internal _batchTargets;
     bytes[] internal _batchDatas;
@@ -57,25 +67,32 @@ contract GrantBlockaidPauser is DeployBase, Roles {
         _initializeSafeMultiSig();
         blockaidResponseWallet = vm.envAddress("BLOCKAID_RESPONSE_WALLET");
         require(blockaidResponseWallet != address(0), "BLOCKAID_RESPONSE_WALLET is zero");
+
+        allChains.push(ChainConfig({chainName: "ethereum", rpcUrl: vm.envString("ETHEREUM_RPC_URL")}));
+        allChains.push(ChainConfig({chainName: "base", rpcUrl: vm.envString("BASE_RPC_URL")}));
+        allChains.push(ChainConfig({chainName: "polygon", rpcUrl: vm.envString("POLYGON_RPC_URL")}));
     }
 
     function run() public {
-        // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
-        // Safe txns (on-chain nonce doesn't advance until execution).
-        currentNonce = getSafeNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
+        for (uint256 i; i < allChains.length; ++i) {
+            vm.createSelectFork(allChains[i].rpcUrl);
+            // SAFE_NONCE_OFFSET queues this proposal behind pending-but-unexecuted
+            // Safe txns (on-chain nonce doesn't advance until execution).
+            currentNonce = getSafeNonce() + vm.envOr("SAFE_NONCE_OFFSET", uint256(0));
 
-        string memory chainAlias = _chainAlias();
+            _grantOnChain(allChains[i].chainName);
+        }
+    }
 
-        console.log("=== Grant Blockaid PAUSER_ROLE (Safe) ===");
-        console.log("Chain:", chainAlias);
+    function _grantOnChain(string memory chainAlias) internal {
+        console.log("=== Grant Blockaid PAUSER_ROLE on %s (Safe) ===", chainAlias);
         console.log("Safe:", deployerSafeAddress);
         console.log("Blockaid response wallet:", blockaidResponseWallet);
-        console.log("");
 
         string[4] memory names = ["TelcoinV3", "TelcoinBridge", "TokenMigration", "MigrationVault"];
         for (uint256 i; i < names.length; ++i) {
             address target = _loadDeploymentAddress(chainAlias, names[i]);
-            require(target != address(0), string.concat(names[i], " not deployed"));
+            require(target != address(0), string.concat(names[i], " not deployed on ", chainAlias));
 
             if (IAccessControl(target).hasRole(PAUSER_ROLE, blockaidResponseWallet)) {
                 console.log("  %s: Blockaid already has PAUSER_ROLE, skipping", names[i]);
@@ -99,7 +116,8 @@ contract GrantBlockaidPauser is DeployBase, Roles {
         }
 
         if (_batchTargets.length == 0) {
-            console.log("Nothing to grant, all contracts already configured.");
+            console.log("Nothing to grant on %s, already configured.", chainAlias);
+            console.log("");
             return;
         }
 
@@ -119,12 +137,10 @@ contract GrantBlockaidPauser is DeployBase, Roles {
         } else {
             console.log("Grant batch proposed (%d grants).", _batchTargets.length);
         }
-    }
+        console.log("");
 
-    function _chainAlias() internal view returns (string memory) {
-        if (block.chainid == ETH_MAINNET_CHAIN_ID) return "ethereum";
-        if (block.chainid == BASE_MAINNET_CHAIN_ID) return "base";
-        if (block.chainid == POLYGON_MAINNET_CHAIN_ID) return "polygon";
-        revert("Unsupported chain");
+        delete _batchTargets;
+        delete _batchDatas;
+        delete _grantedNames;
     }
 }
