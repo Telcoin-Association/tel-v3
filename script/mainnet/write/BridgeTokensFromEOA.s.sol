@@ -14,10 +14,9 @@ import "../utils/Constants.sol";
 ///         plain EOA instead of the Safe — for quick end-to-end bridge testing. The EOA pays
 ///         the LayerZero native fee directly as msg.value, which the Safe propose flow cannot.
 ///
-///         The source chain is whatever --rpc-url points at; the destination and amount come
-///         from env vars:
+///         The amount is the BRIDGE_AMOUNT constant below. The source chain is whatever
+///         --rpc-url points at; the destination comes from env:
 ///           DST_CHAIN          "ethereum" | "base" | "polygon" (must differ from source)
-///           BRIDGE_AMOUNT_TEL  whole TEL v3 tokens to bridge (integer, e.g. 10)
 ///           BRIDGE_RECIPIENT   optional destination recipient (defaults to the sending EOA)
 ///
 ///         The EOA needs TEL v3 on the source chain plus native gas for the LZ fee.
@@ -26,18 +25,21 @@ import "../utils/Constants.sol";
 ///
 /// Simulation (pass --sender so balance checks run against the right EOA):
 /// ```
-/// DST_CHAIN=base BRIDGE_AMOUNT_TEL=10 forge script script/mainnet/write/BridgeTokensFromEOA.s.sol \
+/// DST_CHAIN=base forge script script/mainnet/write/BridgeTokensFromEOA.s.sol \
 ///     --rpc-url $ETHEREUM_RPC_URL --sender $EOA -vvvv
 /// ```
 ///
 /// Broadcast (private key, or swap in --trezor / --ledger / --account):
 /// ```
-/// DST_CHAIN=base BRIDGE_AMOUNT_TEL=10 forge script script/mainnet/write/BridgeTokensFromEOA.s.sol \
+/// DST_CHAIN=base forge script script/mainnet/write/BridgeTokensFromEOA.s.sol \
 ///     --rpc-url $ETHEREUM_RPC_URL --broadcast --private-key $EOA_PRIVATE_KEY -vvvv
 /// ```
 contract BridgeTokensFromEOA is DeployBase {
-    /// @dev OFT shared decimals are 6, so amounts below 1e12 wei are truncated as dust.
-    ///      Whole-TEL amounts are always dust-free.
+    /// @notice Amount of TEL v3 to bridge (18 decimals). Must be a multiple of 1e12 wei:
+    ///         OFT shared decimals are 6, so anything below that is truncated as dust and
+    ///         would trip the exact-amount slippage check. Whole-TEL amounts are always safe.
+    uint256 internal constant BRIDGE_AMOUNT = 10 ether;
+
     uint128 internal constant DST_GAS_LIMIT = 200_000;
 
     struct BridgeConfig {
@@ -68,8 +70,9 @@ contract BridgeTokensFromEOA is DeployBase {
             "DST_CHAIN must differ from the source chain"
         );
 
-        cfg.amount = vm.envUint("BRIDGE_AMOUNT_TEL") * 1 ether;
-        require(cfg.amount > 0, "BRIDGE_AMOUNT_TEL is zero");
+        cfg.amount = BRIDGE_AMOUNT;
+        require(cfg.amount > 0, "BRIDGE_AMOUNT is zero");
+        require(cfg.amount % 1e12 == 0, "BRIDGE_AMOUNT has OFT dust (not a multiple of 1e12)");
 
         cfg.telcoinV3 = _loadDeploymentAddress(cfg.srcChain, "TelcoinV3");
         cfg.bridge = _loadDeploymentAddress(cfg.srcChain, "TelcoinBridge");
