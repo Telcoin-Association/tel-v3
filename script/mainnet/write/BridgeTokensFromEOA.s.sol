@@ -39,7 +39,6 @@ contract BridgeTokensFromEOA is DeployBase {
     ///         OFT shared decimals are 6, so anything below that is truncated as dust and
     ///         would trip the exact-amount slippage check. Whole-TEL amounts are always safe.
     uint256 internal constant BRIDGE_AMOUNT = 10 ether;
-
     uint128 internal constant DST_GAS_LIMIT = 200_000;
 
     struct BridgeConfig {
@@ -107,7 +106,12 @@ contract BridgeTokensFromEOA is DeployBase {
         });
 
         MessagingFee memory fee = TelcoinBridge(cfg.bridge).quoteSend(sendParam, false);
-        console.log("LayerZero fee (native wei):", fee.nativeFee);
+        console.log("LayerZero fee quoted (native wei):", fee.nativeFee);
+
+        // DVN/executor fees float with gas-price feeds between quote and inclusion (especially
+        // on Polygon). Pay a 20% buffer; the endpoint refunds the excess to the refund address.
+        fee.nativeFee = (fee.nativeFee * 120) / 100;
+        console.log("LayerZero fee with buffer:", fee.nativeFee);
         require(eoa.balance >= fee.nativeFee, "Insufficient native balance for LZ fee");
 
         TelcoinBridge(cfg.bridge).send{value: fee.nativeFee}(sendParam, fee, eoa);
