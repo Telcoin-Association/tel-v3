@@ -29,10 +29,14 @@ import "../utils/Constants.sol";
 ///     --rpc-url $ETHEREUM_RPC_URL --sender $EOA -vvvv
 /// ```
 ///
-/// Broadcast (private key, or swap in --trezor / --ledger / --account):
+/// Broadcast (private key, or swap in --trezor / --ledger / --account). The -g 200 gas
+/// multiplier is REQUIRED: foundry's fork simulation undercharges cold state access, so its
+/// gas estimate for send() lands ~40% below real execution (verified on Polygon: forge
+/// measured ~410k vs 671k actual; a real node's eth_estimateGas gets it right). Without it
+/// the send runs out of gas in the DVN fee loop:
 /// ```
 /// DST_CHAIN=base forge script script/mainnet/write/BridgeTokensFromEOA.s.sol \
-///     --rpc-url $ETHEREUM_RPC_URL --broadcast --private-key $EOA_PRIVATE_KEY -vvvv
+///     --rpc-url $ETHEREUM_RPC_URL --broadcast --private-key $EOA_PRIVATE_KEY -g 200 -vvvv
 /// ```
 contract BridgeTokensFromEOA is DeployBase {
     /// @notice Amount of TEL v3 to bridge (18 decimals). Must be a multiple of 1e12 wei:
