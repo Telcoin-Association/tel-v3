@@ -9,11 +9,15 @@ import {Roles} from "../../../src/helpers/Roles.sol";
 import "../utils/Constants.sol";
 
 /// @title UnpauseMigration (Mainnet)
-/// @notice Unpauses TokenMigration at launch, opening TEL v2 -> TEL v3 migration to the public.
+/// @notice Launches public TEL v2 -> TEL v3 migration as ONE MultiSend Safe transaction:
+///         1. setMigrationExpiry(now + 365 days) — the expiry clock started at deploy, so
+///            without this the public window would be deploy + 365d, not launch + 365d.
+///            Extend-only and DEFAULT_ADMIN_ROLE-gated.
+///         2. unpause()                          — UNPAUSER_ROLE-gated.
 ///
-///         unpause() is gated by UNPAUSER_ROLE, which is held by the dedicated unpauser
-///         (not the admin Safe) — run with DEPLOYER_SAFE_ADDRESS set to the Safe that
-///         holds UNPAUSER_ROLE on TokenMigration.
+///         Run with DEPLOYER_SAFE_ADDRESS set to the admin Safe, which holds BOTH roles
+///         (the dedicated unpauser Safe cannot extend the expiry). Both are checked
+///         up front with clear errors.
 ///
 /// ## How to Run
 ///
@@ -36,6 +40,14 @@ import "../utils/Constants.sol";
 /// SAFE_NONCE_OFFSET=1 forge script <this script> --rpc-url $RPC_URL --broadcast --ffi -vvvv
 /// ```
 contract UnpauseMigration is DeployBase, Roles {
+    bytes32 internal constant DEFAULT_ADMIN_ROLE = 0x00;
+
+    /// @notice Public migration window measured from launch (this proposal), not deploy.
+    uint256 internal constant MIGRATION_WINDOW = 365 days;
+
+    address[] internal _batchTargets;
+    bytes[] internal _batchDatas;
+
     function setUp() public {
         _initializeSafeMultiSig();
     }
@@ -51,34 +63,49 @@ contract UnpauseMigration is DeployBase, Roles {
         require(migrator != address(0), "TokenMigration not deployed");
 
         TokenMigration migration = TokenMigration(migrator);
+        IAccessControl access = IAccessControl(migrator);
+        uint256 newExpiry = block.timestamp + MIGRATION_WINDOW;
 
         // Pre-flight checks
         require(migration.paused(), "TokenMigration is already unpaused");
-        require(
-            IAccessControl(migrator).hasRole(UNPAUSER_ROLE, deployerSafeAddress),
-            "Safe lacks UNPAUSER_ROLE (set DEPLOYER_SAFE_ADDRESS to the unpauser Safe)"
-        );
         require(!migration.migrationClosed(), "Migration permanently closed");
-        require(block.timestamp < migration.migrationExpiry(), "Migration expired");
+        require(
+            access.hasRole(UNPAUSER_ROLE, deployerSafeAddress),
+            "Safe lacks UNPAUSER_ROLE (set DEPLOYER_SAFE_ADDRESS to the admin Safe)"
+        );
+        require(
+            access.hasRole(DEFAULT_ADMIN_ROLE, deployerSafeAddress),
+            "Safe lacks DEFAULT_ADMIN_ROLE to extend expiry (set DEPLOYER_SAFE_ADDRESS to the admin Safe)"
+        );
+        require(newExpiry > migration.migrationExpiry(), "New expiry does not extend the current one");
 
-        console.log("=== Unpause Migration for Launch (Safe) ===");
+        console.log("=== Launch Migration: extend expiry + unpause (Safe) ===");
         console.log("Chain:", chainAlias);
         console.log("Safe:", deployerSafeAddress);
         console.log("TokenMigration:", migrator);
-        console.log("Migration expiry:", migration.migrationExpiry());
+        console.log("Current expiry:", migration.migrationExpiry());
+        console.log("New expiry (launch + 365d):", newExpiry);
         console.log("");
 
-        _proposeTransaction(
-            migrator,
-            abi.encodeCall(TokenMigration.unpause, ()),
-            "Unpause TokenMigration for launch"
+        // 1. Full 365-day public window measured from launch
+        _batchTargets.push(migrator);
+        _batchDatas.push(abi.encodeCall(TokenMigration.setMigrationExpiry, (newExpiry)));
+
+        // 2. Open public migration
+        _batchTargets.push(migrator);
+        _batchDatas.push(abi.encodeCall(TokenMigration.unpause, ()));
+
+        _proposeTransactions(
+            _batchTargets, _batchDatas, string.concat("Launch migration on ", chainAlias)
         );
 
+        // Simulation executes the batch on the fork — verify the end state
         if (isSimulation()) {
             require(!migration.paused(), "TokenMigration still paused after simulation");
-            console.log("Simulation OK: TokenMigration unpaused, migration is live.");
+            require(migration.migrationExpiry() == newExpiry, "Expiry not extended");
+            console.log("Simulation OK: expiry extended, TokenMigration unpaused, migration is live.");
         } else {
-            console.log("Unpause transaction proposed.");
+            console.log("Launch batch proposed.");
         }
     }
 
