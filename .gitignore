@@ -18,3 +18,4 @@ lcov.*
 .claude
 x-ray/
 notes/
+.DS_Store
