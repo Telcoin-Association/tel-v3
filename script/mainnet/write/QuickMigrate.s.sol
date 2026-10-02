@@ -20,10 +20,12 @@ import "../utils/Constants.sol";
 ///         2. unpause()                             (only if currently paused)
 ///         3. approve legacy TEL to TokenMigration  (full Safe balance)
 ///         4. migrate()                             (migrates the Safe's entire legacy balance)
-///         5. pause()                               (only if it was originally paused)
+///         5. transfer minted TEL v3 to MIGRATION_RECIPIENT (EOA used for pool creation)
+///         6. pause()                               (only if it was originally paused)
 ///
 ///         Run with DEPLOYER_SAFE_ADDRESS set to the admin Safe (holds DEFAULT_ADMIN_ROLE
-///         and PAUSER_ROLE on TokenMigration).
+///         and PAUSER_ROLE on TokenMigration) and MIGRATION_RECIPIENT set to the EOA
+///         that receives the migrated TEL v3.
 ///
 /// ## How to Run
 ///
@@ -48,11 +50,17 @@ import "../utils/Constants.sol";
 contract QuickMigrate is DeployBase, Roles {
     bytes32 internal constant DEFAULT_ADMIN_ROLE = 0x00;
 
+    /// @notice EOA that receives the migrated TEL v3 for pool creation, read from .env.
+    address internal migrationRecipient;
+
     address[] internal _batchTargets;
     bytes[] internal _batchDatas;
 
     function setUp() public {
         _initializeSafeMultiSig();
+        migrationRecipient = vm.envAddress("MIGRATION_RECIPIENT");
+        require(migrationRecipient != address(0), "MIGRATION_RECIPIENT is zero");
+        require(migrationRecipient.code.length == 0, "MIGRATION_RECIPIENT is not an EOA");
     }
 
     function run() public {
@@ -77,6 +85,7 @@ contract QuickMigrate is DeployBase, Roles {
 
         uint256 legacyBalance = IERC20(legacyTelcoin).balanceOf(deployerSafeAddress);
         require(legacyBalance > 0, "Safe holds no legacy TEL");
+        uint256 amountToMint = migration.getAmountOut(legacyBalance);
 
         bool wasPaused = migration.paused();
         bool grantUnpauser = wasPaused && !access.hasRole(UNPAUSER_ROLE, deployerSafeAddress);
@@ -88,7 +97,8 @@ contract QuickMigrate is DeployBase, Roles {
         console.log("Legacy TEL:", legacyTelcoin);
         console.log("TokenMigration:", migrator);
         console.log("Legacy TEL balance (2 dec):", legacyBalance);
-        console.log("TEL v3 to be minted (18 dec):", migration.getAmountOut(legacyBalance));
+        console.log("TEL v3 to be minted (18 dec):", amountToMint);
+        console.log("TEL v3 recipient (EOA):", migrationRecipient);
         console.log("Currently paused:", wasPaused);
         console.log("");
 
@@ -116,11 +126,18 @@ contract QuickMigrate is DeployBase, Roles {
         _batchTargets.push(migrator);
         _batchDatas.push(abi.encodeCall(TokenMigration.migrate, ()));
 
-        // 5. Restore original pause state
+        // 5. Forward the minted TEL v3 to the pool-creation EOA
+        _batchTargets.push(telcoinV3);
+        _batchDatas.push(abi.encodeCall(IERC20.transfer, (migrationRecipient, amountToMint)));
+
+        // 6. Restore original pause state
         if (wasPaused) {
             _batchTargets.push(migrator);
             _batchDatas.push(abi.encodeCall(TokenMigration.pause, ()));
         }
+
+        uint256 recipientBalanceBefore = IERC20(telcoinV3).balanceOf(migrationRecipient);
+        uint256 safeBalanceBefore = IERC20(telcoinV3).balanceOf(deployerSafeAddress);
 
         _proposeTransactions(_batchTargets, _batchDatas, "Quick migrate legacy TEL to TelcoinV3");
 
@@ -128,8 +145,16 @@ contract QuickMigrate is DeployBase, Roles {
         if (isSimulation()) {
             require(migration.paused() == wasPaused, "Pause state not restored");
             require(IERC20(legacyTelcoin).balanceOf(deployerSafeAddress) == 0, "Legacy TEL not fully migrated");
-            console.log("Simulation OK: migrated, pause state restored.");
-            console.log("Safe TEL v3 balance:", IERC20(telcoinV3).balanceOf(deployerSafeAddress));
+            require(
+                IERC20(telcoinV3).balanceOf(migrationRecipient) == recipientBalanceBefore + amountToMint,
+                "Recipient did not receive minted TEL v3"
+            );
+            require(
+                IERC20(telcoinV3).balanceOf(deployerSafeAddress) == safeBalanceBefore,
+                "Minted TEL v3 left behind in Safe"
+            );
+            console.log("Simulation OK: migrated, TEL v3 forwarded to recipient, pause state restored.");
+            console.log("Recipient TEL v3 balance:", IERC20(telcoinV3).balanceOf(migrationRecipient));
         } else {
             console.log("Quick migrate batch proposed.");
         }
